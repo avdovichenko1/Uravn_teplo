@@ -28,13 +28,13 @@ int main(int argc, char *argv[]) {
     }
     int num_iter = 0;
     double loss = max_tochn + 1;
-#pragma acc data copy(arr[:m][:m]) create(arrNew[:m][:m])
+#pragma acc data copy(arr[:raz][:raz]) create(arrNew[:raz][:raz])
     {
         while(loss > max_tochn && num_iter < max_num_iter){
             loss = 0;
-#pragma acc parallel loop reduction(max:err)
+#pragma acc parallel loop reduction(max:loss)
             for(int j = 1; j < raz - 1; j++)	{
-#pragma acc loop reduction(max:err)
+#pragma acc loop reduction(max:loss)
                 for(int i = 1; i < raz - 1; i++){
                     arr_new[i][j] = 0.25 * (arr_pred[i + 1][j] + arr_pred[i - 1][j] + arr_pred[i][j - 1] + arr_pred[i][j + 1]);
                     loss = fmax(fabs(arr_new[i][j] - arr_pred[i][j]), loss);
