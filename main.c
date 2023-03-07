@@ -55,6 +55,7 @@ int main(int argc, char *argv[]) {
             num_iter++;
         }
     }
+
     printf("Programms result: %d, %0.6lf\n", num_iter, error);
     clock_t b=clock();
     double d=(double)(b-a)/CLOCKS_PER_SEC;
