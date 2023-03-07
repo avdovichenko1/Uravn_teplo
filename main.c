@@ -5,7 +5,7 @@
 
 int main(int argc, char *argv[]) {
     int max_num_iter = atoi(argv[1]); // count of iterations
-    double max_tochn = atof(argv[2]); // tochnost
+    double max_toch = atof(argv[2]); // tochnost
     int raz = atoi(argv[3]); // count matrix
     clock_t a=clock();
     double **arr_pred= (double **)calloc(raz, sizeof(double *));
@@ -16,28 +16,38 @@ int main(int argc, char *argv[]) {
         arr_new[i] = (double *)calloc(raz, sizeof(double ));
     }
     arr_pred[0][0] = 10;
-    arr_pred[raz - 1][raz - 1] = 20;
     arr_pred[0][raz - 1] = 20;
-    arr_pred[raz - 1][0] =30;
+    arr_pred[raz - 1][raz - 1] = 20;
+    arr_pred[raz - 1][0] = 30;
+
+#pragma acc parallel loop
     for(int j = 1; j < raz; j++){
-        arr_pred[0][j] = (arr_pred[0][raz - 1] - arr_pred[0][0]) / (raz - 1) + arr_pred[0][j - 1];
-        arr_pred[j][0] = (arr_pred[raz - 1][0] - arr_pred[0][0]) / (raz - 1) + arr_pred[j - 1][0];
-        arr_pred[raz - 1][j] = (arr_pred[raz - 1][raz - 1] - arr_pred[raz - 1][0]) / (raz - 1) + arr_pred[raz - 1][j - 1];
-        arr_pred[j][raz - 1] = (arr_pred[raz - 1][raz - 1] - arr_pred[0][raz - 1]) / (raz - 1) + arr_pred[j - 1][raz - 1];
+        double temp = (arr_pred[0][raz - 1] - arr_pred[0][0]) / (raz - 1);
+        arr_pred[0][j] = temp + arr_pred[0][j - 1];
+        temp = (arr_pred[raz - 1][raz - 1] - arr_pred[raz - 1][0]) / (raz - 1);
+        arr_pred[raz - 1][j] = temp + arr_pred[raz - 1][j - 1];
+        temp = (arr_pred[raz - 1][0] - arr_pred[0][0]) / (raz - 1);
+        arr_pred[j][0] = temp + arr_pred[j - 1][0];
+        temp = (arr_pred[raz - 1][raz - 1] - arr_pred[0][raz - 1]) / (raz - 1);
+        arr_pred[j][raz - 1] = temp + arr_pred[j - 1][raz - 1];
     }
     int num_iter = 0;
-    double loss = max_tochn + 1;
+    double error = max_toch + 1;
 #pragma acc data copy(arr_pred[:raz][:raz]) create(arr_new[:raz][:raz])
     {
-        while(loss > max_tochn && num_iter < max_num_iter){
-            loss = 0;
-            for(int j = 1; j < raz - 1; j++)	{
+        while(max_num_iter > num_iter && max_toch < error){
+            error = 0;
+#pragma acc parallel loop reduction(max:error)
+            for(int j = 1; j < raz - 1; j++) {
+#pragma acc loop reduction(max:error)
                 for(int i = 1; i < raz - 1; i++){
-                    arr_new[i][j] = 0.25 * (arr_pred[i + 1][j] + arr_pred[i - 1][j] + arr_pred[i][j - 1] + arr_pred[i][j + 1]);
-                    loss = fmax(fabs(arr_new[i][j] - arr_pred[i][j]), loss);
+                    arr_new[i][j] = (arr_pred[i-1][j] + arr_pred[i][j-1] + arr_pred[i][j+1]+arr_pred[i+1][j])*0.25;
+                    error = fmax(fabs( arr_pred[i][j]-arr_new[i][j]), error);
                 }
             }
+#pragma acc parallel loop
             for (int j = 1; j < raz - 1; j++) {
+#pragma acc loop
                 for (int i = 1; i < raz - 1; i++) {
                     arr_pred[j][i] = arr_new[j][i];
                 }
@@ -45,10 +55,11 @@ int main(int argc, char *argv[]) {
             num_iter++;
         }
     }
-    printf("Конечный номер итерации: %d, Ошибка %0.6lf\n", num_iter, loss);
+    printf("Programms result: %d, %0.6lf\n", num_iter, error);
     clock_t b=clock();
     double d=(double)(b-a)/CLOCKS_PER_SEC;
-    printf("%.25f время в секундах", d);
+    printf("%.25f time in sec", d);
+#pragma acc parallel loop
     for (int i = 0; i < raz; i++) {
         free(arr_pred[i]);
         free(arr_new[i]);
