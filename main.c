@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
     }
     int num_iter = 0;
     double loss = max_tochn + 1;
-#pragma acc data copy(arr[:raz][:raz]) create(arrNew[:raz][:raz])
+#pragma acc data copy(arr_pred[:raz][:raz]) create(arr_new[:raz][:raz])
     {
         while(loss > max_tochn && num_iter < max_num_iter){
             loss = 0;
