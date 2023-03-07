@@ -19,7 +19,7 @@ int main(int argc, char *argv[]) {
     arr_pred[0][raz - 1] = 20;
     arr_pred[raz - 1][raz - 1] = 20;
     arr_pred[raz - 1][0] = 30;
-    
+
     for(int j = 1; j < raz; j++){
         arr_pred[0][j] = (arr_pred[0][raz - 1] - arr_pred[0][0]) / (raz - 1) + arr_pred[0][j - 1];
         arr_pred[raz - 1][j] = (arr_pred[raz - 1][raz - 1] - arr_pred[raz - 1][0]) / (raz - 1) + arr_pred[raz - 1][j - 1];
@@ -32,9 +32,7 @@ int main(int argc, char *argv[]) {
     {
         while(max_num_iter > num_iter && max_toch < error){
             error = 0;
-#pragma acc parallel loop reduction(max:error)
             for(int j = 1; j < raz - 1; j++)  {
-#pragma acc loop reduction(max:error)
                 for(int i = 1; i < raz - 1; i++){
                     arr_new[i][j] = (arr_pred[i-1][j] + arr_pred[i][j-1] + arr_pred[i][j+1]+arr_pred[i+1][j])*0.25;
                     error = fmax(fabs( arr_pred[i][j]-arr_new[i][j]), error);
