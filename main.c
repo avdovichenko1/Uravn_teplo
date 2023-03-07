@@ -19,7 +19,8 @@ int main(int argc, char *argv[]) {
     arr_pred[0][raz - 1] = 20;
     arr_pred[raz - 1][raz - 1] = 20;
     arr_pred[raz - 1][0] = 30;
-
+#pragma acc data copy(arr_pred[:raz][:raz]) create(arr_new[:raz][:raz])
+    {
 #pragma acc parallel loop
     for(int j = 1; j < raz; j++){
         double temp = (arr_pred[0][raz - 1] - arr_pred[0][0]) / (raz - 1);
@@ -33,8 +34,7 @@ int main(int argc, char *argv[]) {
     }
     int num_iter = 0;
     double error = max_toch + 1;
-#pragma acc data copy(arr_pred[:raz][:raz]) create(arr_new[:raz][:raz])
-    {
+
         while(max_num_iter > num_iter && max_toch < error){
             error = 0;
 #pragma acc parallel loop reduction(max:error)
@@ -54,8 +54,9 @@ int main(int argc, char *argv[]) {
             }
             num_iter++;
         }
+        printf("Programms result: %d, %0.6lf\n", num_iter, error);
     }
-    printf("Programms result: %d, %0.6lf\n", num_iter, error);
+
     clock_t b=clock();
     double d=(double)(b-a)/CLOCKS_PER_SEC;
     printf("%.25f time in sec", d);
