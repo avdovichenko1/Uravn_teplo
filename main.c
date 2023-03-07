@@ -47,8 +47,6 @@ int main(int argc, char *argv[]) {
                 temp = (arr_pred[raz - 1][raz - 1] - arr_pred[0][raz - 1]) / (raz - 1);
                 arr_pred[i][raz - 1] = temp + arr_pred[i - 1][raz - 1];
             }
-            int num_iter = 0;
-            double error = max_toch + 1;
 #pragma acc data present(arr_pred[:raz][:raz]) create(arr_new[:raz][:raz])
             {
                 while (max_num_iter > num_iter && max_toch < error) {
@@ -74,9 +72,10 @@ int main(int argc, char *argv[]) {
                     num_iter++;
                 }
             }
+        }
 
             printf("Programms result: %d, %0.6lf\n", num_iter, error);
-        }
+        
     }
 
     clock_t b=clock();
