@@ -46,7 +46,16 @@ int main(int argc, char *argv[]) {
                         arr_new[i][j] =
                                 (arr_pred[i - 1][j] + arr_pred[i][j - 1] + arr_pred[i][j + 1] + arr_pred[i + 1][j]) *
                                 0.25;
-                        error = fmax(fabs(arr_pred[i][j] - arr_new[i][j]), error);}
+                        error = fmax(fabs(arr_pred[i][j] - arr_new[i][j]), error);
+                    }
+
+                }
+#pragma acc parallel loop
+                for (int j = 1; j < raz - 1; j++) {
+#pragma acc loop
+                    for (int i = 1; i < raz - 1; i++) {
+                        arr_pred[j][i] = arr_new[j][i];
+                    }
                 }
                 num_iter++;
             }
