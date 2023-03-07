@@ -19,8 +19,7 @@ int main(int argc, char *argv[]) {
     arr_pred[0][raz - 1] = 20;
     arr_pred[raz - 1][raz - 1] = 20;
     arr_pred[raz - 1][0] = 30;
-
-#pragma acc parallel loop
+    
     for(int j = 1; j < raz; j++){
         arr_pred[0][j] = (arr_pred[0][raz - 1] - arr_pred[0][0]) / (raz - 1) + arr_pred[0][j - 1];
         arr_pred[raz - 1][j] = (arr_pred[raz - 1][raz - 1] - arr_pred[raz - 1][0]) / (raz - 1) + arr_pred[raz - 1][j - 1];
@@ -41,9 +40,7 @@ int main(int argc, char *argv[]) {
                     error = fmax(fabs( arr_pred[i][j]-arr_new[i][j]), error);
                 }
             }
-#pragma acc parallel loop
             for (int j = 1; j < raz - 1; j++) {
-#pragma acc loop
                 for (int i = 1; i < raz - 1; i++) {
                     arr_pred[j][i] = arr_new[j][i];
                 }
@@ -58,7 +55,6 @@ int main(int argc, char *argv[]) {
     clock_t b=clock();
     double d=(double)(b-a)/CLOCKS_PER_SEC;
     printf("%.25f время в секундах", d);
-#pragma acc parallel loop
     for (int i = 0; i < raz; i++) {
         free(arr_pred[i]);
         free(arr_new[i]);
