@@ -20,9 +20,8 @@ int main(int argc, char *argv[]) {
     arr_pred[raz - 1][raz - 1] = 20;
     arr_pred[raz - 1][0] = 30;
 
-#pragma acc data copy(arr_pred[:raz][:raz]) create(arr_new[:raz][:raz])
+#pragma acc data create(arr_pred[:raz][:raz], arr_new[:raz][:raz])
     {
-#pragma acc parallel loop
         for(int i = 1; i < raz - 1; i++){
             double temp = (arr_pred[0][raz - 1] - arr_pred[0][0]) / (raz - 1);
             arr_pred[0][i] = temp + arr_pred[0][i - 1];
@@ -33,35 +32,37 @@ int main(int argc, char *argv[]) {
             temp = (arr_pred[raz - 1][raz - 1] - arr_pred[0][raz - 1]) / (raz - 1);
             arr_pred[i][raz - 1] = temp + arr_pred[i - 1][raz - 1];
         }
+
         int num_iter = 0;
         double error = max_toch + 1;
-#pragma acc data copy(arr_pred[:raz][:raz]) create(arr_new[:raz][:raz])
-        {
-            while (max_num_iter > num_iter && max_toch < error) {
-                error = 0;
-#pragma acc parallel loop reduction(max:error)
-                for (int i = 1; i < raz - 1; i++) {
-#pragma acc loop reduction(max:error)
-                    for (int j = 1; j < raz - 1; j++) {
-                        arr_new[i][j] =
-                                (arr_pred[i - 1][j] + arr_pred[i][j - 1] + arr_pred[i][j + 1] + arr_pred[i + 1][j]) *
-                                0.25;
-                        error = fmax(fabs(arr_pred[i][j] - arr_new[i][j]), error);
-                    }
 
-                }
-#pragma acc parallel loop
+        while (max_num_iter > num_iter && max_toch < error) {
+            error = 0;
+
+#pragma acc parallel loop reduction(max:error)
+            for (int i = 1; i < raz - 1; i++) {
+#pragma acc loop reduction(max:error)
                 for (int j = 1; j < raz - 1; j++) {
-#pragma acc loop
-                    for (int i = 1; i < raz - 1; i++) {
-                        arr_pred[j][i] = arr_new[j][i];
-                    }
+                    arr_new[i][j] =
+                            (arr_pred[i - 1][j] + arr_pred[i][j - 1] + arr_pred[i][j + 1] + arr_pred[i + 1][j]) *
+                            0.25;
+                    error = fmax(fabs(arr_pred[i][j] - arr_new[i][j]), error);
                 }
-                num_iter++;
             }
+
+#pragma acc parallel loop
+            for (int j = 1; j < raz - 1; j++) {
+#pragma acc loop
+                for (int i = 1; i < raz - 1; i++) {
+                    arr_pred[j][i] = arr_new[j][i];
+                }
+            }
+
+            num_iter++;
         }
         printf("Programms result: %d, %0.6lf\n", num_iter, error);
     }
+
     clock_t b=clock();
     double d=(double)(b-a)/CLOCKS_PER_SEC;
     printf("%.25f time in sec", d);
