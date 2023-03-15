@@ -65,7 +65,6 @@ int main(int argc, char *argv[]) {
     clock_t b=clock();
     double d=(double)(b-a)/CLOCKS_PER_SEC;
     printf("%.25f time in sec", d);
-#pragma acc parallel loop
     for (int i = 0; i < raz; i++) {
         free(arr_pred[i]);
         free(arr_new[i]);
