@@ -4,9 +4,9 @@
 #include <time.h>
 
 int main(int argc, char *argv[]) {
-    int max_num_iter = atoi(argv[1]); // количество итераций
-    double max_toch = atof(argv[2]); // точность
-    int raz = atoi(argv[3]); // размер сетки
+    int max_num_iter = atoi(argv[1]);
+    double max_toch = atof(argv[2]);
+    int raz = atoi(argv[3]);
     clock_t a=clock();
     double **arr_pred= (double **)calloc(raz, sizeof(double *));
     double **arr_new= (double **)calloc(raz, sizeof(double *));
@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
             for (int j = 1; j < raz - 1; j++) {
 #pragma acc loop
                 for (int i = 1; i < raz - 1; i++) {
-                    arr_pred[j][i] = arr_new[j][i];
+                    arr_pred[i][j] = arr_new[i][j];
                 }
             }
             if (num_iter % 10 == 0) {
