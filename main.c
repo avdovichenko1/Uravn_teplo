@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
         cudaMalloc(&d_error, sizeof(double));
         cudaMemset(d_error, 0, sizeof(double));
         double one = 1;
-        cublasDasum_v2(handle, (raz-2) * (raz-2), workspace, 1, &error);
+        cublasDasum_v2(handle, (raz-2) * (raz-2), d_arr_pred[1]+raz+1, 1, &error);
         cudaMemcpy(&error, d_error, sizeof(double), cudaMemcpyDeviceToHost);
         cudaFree(d_error);
 
@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Итог программы: %d, %0.6lf\n", num_iter, error);
-    
+
     cudaFree(d_arr_pred);
     cudaFree(d_arr_new);
     for (int i = 0; i < raz; i++) {
