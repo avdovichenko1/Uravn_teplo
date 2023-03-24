@@ -9,9 +9,9 @@ int main(int argc, char *argv[]) {
     int max_num_iter = atoi(argv[1]);
     double max_toch = atof(argv[2]);
     int raz = atoi(argv[3]);
-    clock_t a=clock();
-    double **arr_pred= (double **)calloc(raz, sizeof(double *));
-    double **arr_new= (double **)calloc(raz, sizeof(double *));
+    clock_t a = clock();
+    double **arr_pred = (double **)calloc(raz, sizeof(double *));
+    double **arr_new = (double **)calloc(raz, sizeof(double *));
 
     for (int i = 0; i < raz; i++) {
         arr_pred[i] = (double *)calloc(raz, sizeof(double ));
@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Transfer data to GPU memory
-    cublasSetMatrix(raz, raz, sizeof(double), arr_pred[0], raz, d_arr_pred[0], raz);
+    cudaMemcpy(d_arr_pred[0], arr_pred[0], raz * raz * sizeof(double), cudaMemcpyHostToDevice);
 
     int num_iter = 0;
     double error = max_toch + 1;
@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
         cudaMalloc(&d_error, sizeof(double));
         cudaMemset(d_error, 0, sizeof(double));
         double one = 1;
-        cublasDasum(handle, (raz-2) * (raz-2), d_arr_pred[1]+raz+1, 1, &error);
+        cublasDasum(handle, (raz-2) * (raz-2), d_arr_pred[1]+raz+1, 1, d_error);
         cudaMemcpy(&error, d_error, sizeof(double), cudaMemcpyDeviceToHost);
         cudaFree(d_error);
 
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
         cublasDasum(handle, (raz-2) * (raz-2), d_arr_new[1]+raz+1, 1, &error);
 
         // Update arr_pred on the GPU
-        cublasSetMatrix(raz-2, raz-2, sizeof(double), d_arr_new[1]+raz+1, raz-2, d_arr_pred[1]+raz+1, raz-2);
+        cudaMemcpy(d_arr_pred[1]+raz+1, d_arr_new[1]+raz+1, (raz-2)*(raz-2)*sizeof(double), cudaMemcpyDeviceToDevice);
 
         if (num_iter % 10 == 0) {
             printf("Номер итерации: %d, ошибка: %0.8lf\n", num_iter, error);
