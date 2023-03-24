@@ -3,7 +3,7 @@
 #include <math.h>
 #include <time.h>
 #include <cuda_runtime.h>
-#include <cublas_v2.h>
+#include "cublas_v2.h"
 
 int main(int argc, char *argv[]) {
     int max_num_iter = atoi(argv[1]);
