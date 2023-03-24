@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <cuda_runtime.h>
+#include "cublas_v2.h"
 
 int main(int argc, char *argv[]) {
     int max_num_iter = atoi(argv[1]); // количество итераций
@@ -31,6 +33,8 @@ int main(int argc, char *argv[]) {
     double error = max_toch + 1;
 #pragma acc data copy(arr_pred[:raz][:raz]) create(arr_new[:raz][:raz])
     {
+        cublasHandle_t handle;
+        cublasCreate(&handle);
         while(max_num_iter > num_iter && max_toch < error){
             error = 0;
 #pragma acc parallel loop reduction(max:error)
@@ -41,6 +45,7 @@ int main(int argc, char *argv[]) {
                     error = fmax(fabs( arr_pred[i][j]-arr_new[i][j]), error);
                 }
             }
+            cublasDcopy(handle, raz * raz, arr_new, 1, arr_pred, 1);
 #pragma acc parallel loop
             for (int j = 1; j < raz - 1; j++) {
 #pragma acc loop
@@ -53,6 +58,7 @@ int main(int argc, char *argv[]) {
             }
             num_iter++;
         }
+        cublasDestroy(handle);
     }
     printf("Итог программы: %d, %0.6lf\n", num_iter, error);
     clock_t b=clock();
