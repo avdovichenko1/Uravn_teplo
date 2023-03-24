@@ -3,19 +3,19 @@
 #include <math.h>
 #include <time.h>
 #include <cuda_runtime.h>
-#include "cublas_v2.h"
+#include "cublas_wrapper.h"
 
 int main(int argc, char *argv[]) {
     int max_num_iter = atoi(argv[1]);
     double max_toch = atof(argv[2]);
     int raz = atoi(argv[3]);
     clock_t a=clock();
-    double **arr_pred= (double **)calloc(raz, sizeof(double *));
-    double **arr_new= (double **)calloc(raz, sizeof(double *));
+    double **arr_pred = (double **)calloc(raz, sizeof(double *));
+    double **arr_new = (double **)calloc(raz, sizeof(double *));
 
     for (int i = 0; i < raz; i++) {
-        arr_pred[i] = (double *)calloc(raz, sizeof(double ));
-        arr_new[i] = (double *)calloc(raz, sizeof(double ));
+        arr_pred[i] = (double *)calloc(raz, sizeof(double));
+        arr_new[i] = (double *)calloc(raz, sizeof(double));
     }
     arr_pred[0][0] = 10;
     arr_pred[0][raz - 1] = 20;
@@ -23,8 +23,7 @@ int main(int argc, char *argv[]) {
     arr_pred[raz - 1][0] = 30;
 
     // Set up cuBLAS
-    cublasHandle_t handle;
-    cublasCreate(&handle);
+    CUBLAS_WRAPPER cublas_wrapper;
 
     // Allocate GPU memory
     double **d_arr_pred, **d_arr_new;
@@ -46,21 +45,21 @@ int main(int argc, char *argv[]) {
 
         // Calculate arr_new on the GPU
         double alpha = 0.25, beta = 0;
-        cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, raz-2, raz-2, raz-2, &alpha,
-                    d_arr_pred[1], raz, d_arr_pred[raz-2], raz, &beta,
-                    d_arr_new[1], raz);
+        cublas_wrapper.gemm(CUBLAS_OP_N, CUBLAS_OP_N, raz-2, raz-2, raz-2, &alpha,
+                            d_arr_pred[1], raz, d_arr_pred[raz-2], raz, &beta,
+                            d_arr_new[1], raz);
 
         // Calculate error on the GPU
         double *d_error;
         cudaMalloc(&d_error, sizeof(double));
         cudaMemset(d_error, 0, sizeof(double));
         double one = 1;
-        cublasDasum(handle, (raz-2) * (raz-2), d_arr_pred[1]+raz+1, 1, d_error);
+        cublas_wrapper.asum((raz-2) * (raz-2), d_arr_pred[1]+raz+1, 1, &error);
         cudaMemcpy(&error, d_error, sizeof(double), cudaMemcpyDeviceToHost);
         cudaFree(d_error);
 
         // Reduce error on the GPU
-        cublasDasum(handle, (raz-2) * (raz-2), d_arr_new[1]+raz+1, 1, &error);
+        cublas_wrapper.asum((raz-2) * (raz-2), d_arr_new[1]+raz+1, 1, &error);
 
         // Update arr_pred on the GPU
         cudaMemcpy(d_arr_pred[1]+raz+1, d_arr_new[1]+raz+1, (raz-2)*(raz-2)*sizeof(double), cudaMemcpyDeviceToDevice);
@@ -71,6 +70,8 @@ int main(int argc, char *argv[]) {
         num_iter++;
 
     }
+
+    printf("Итог программы: %d, %0.6lf\n", num_iter, error);
 
     printf("Итог программы: %d, %0.6lf\n", num_iter, error);
 
