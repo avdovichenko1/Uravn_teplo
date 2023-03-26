@@ -10,8 +10,13 @@ int main(int argc, char *argv[]) {
     double max_toch = atof(argv[2]); // точность
     int raz = atoi(argv[3]); // размер сетки
     clock_t a=clock();
-    double *arr_pred = (double *)calloc(raz*raz, sizeof(double));
-    double *arr_new = (double *)calloc(raz*raz, sizeof(double));
+    double *arr_pred = (double *)malloc(raz * raz * sizeof(double));
+    double *arr_new = (double *)malloc(raz * raz * sizeof(double));
+
+    for (int i = 0; i < raz * raz; i++) {
+        arr_pred[i] = 0;
+        arr_new[i] = 0;
+    }
 
     arr_pred[0] = 10;
     arr_pred[raz - 1] = 20;
