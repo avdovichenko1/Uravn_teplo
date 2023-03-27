@@ -1,8 +1,8 @@
+#include <cublas_v2.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
-#include <cublas_v2.h>
 
 
 int main(int argc, char *argv[]) {
@@ -10,64 +10,86 @@ int main(int argc, char *argv[]) {
     double max_toch = atof(argv[2]); // точность
     int raz = atoi(argv[3]); // размер сетки
     clock_t a=clock();
-    double *arr_pred, *arr_new;
-    cudaMalloc((void **)&arr_pred, raz * raz * sizeof(double));
-    cudaMalloc((void **)&arr_new, raz * raz * sizeof(double));
 
-    for (int i = 0; i < raz * raz; i++) {
-        arr_pred[i] = 0;
-        arr_new[i] = 0;
-    }
+    double* arr_pred = (double*)calloc(raz * raz, sizeof(double));
+    double* arr_new = (double*)calloc(raz * raz, sizeof(double));
 
     arr_pred[0] = 10;
-    arr_pred[raz - 1] = 20;
-    arr_pred[(raz - 1) * raz + (raz - 1)] = 20;
-    arr_pred[(raz - 1) * raz] = 30;
+    arr_pred[raz] = 20;
+    arr_pred[raz * (raz - 1) + 1] = 20;
+    arr_pred[raz * raz] = 30;
 
     int num_iter = 0;
-    double error = max_toch + 1;
-
-#pragma acc data copy(arr_pred[0:raz*raz], arr_new[0:raz*raz])
+    double error = 1 + max_toch;
+    double shag = (10.0 / (raz - 1));
+#pragma acc enter data create(arr_pred[0:raz*raz], arr_new[0:raz*raz]) copyin(raz, shag)
+#pragma acc kernels
     {
-#pragma acc kernels loop independent
-        for(int j = 1; j < raz; j++){
-            arr_pred[j] = (arr_pred[raz - 1] - arr_pred[0]) / (raz - 1) + arr_pred[j - 1];
-            arr_pred[(raz - 1) * raz + j] = (arr_pred[(raz - 1) * raz + (raz - 1)] - arr_pred[(raz - 1) * raz]) / (raz - 1) + arr_pred[(raz - 1) * raz + j - 1];
-            arr_pred[j * raz] = (arr_pred[(raz - 1) * raz] - arr_pred[0]) / (raz - 1) + arr_pred[(j - 1) * raz];
-            arr_pred[j * raz + (raz - 1)] = (arr_pred[(raz - 1) * raz + (raz - 1)] - arr_pred[raz - 1]) / (raz - 1) + arr_pred[(j - 1) * raz + raz - 1];
+#pragma acc loop independent
+        for (int j = 0; j < raz; j++) {
+            arr_pred[j] = 10 + j * (10.0 / (raz - 1));
+            arr_pred[j * raz] = 10 + j * (10.0 / (raz - 1));
+            arr_pred[(raz - 1) * raz + j] = 20 + j * (10.0 / (raz - 1));
+            arr_pred[j * raz + (raz - 1)] = 20 + j * (10.0 / (raz - 1));
         }
+    }
+    cublasHandle_t handle;
+    cublasCreate(&handle);
+    double *dop;
 
-        cublasHandle_t handle;
-        cublasCreate(&handle);
-
-        while (max_num_iter > num_iter && max_toch < error) {
-            error = 0;
-#pragma acc kernels loop independent reduction(max:error)
-            for (int j = 1; j < raz - 1; j++) {
-#pragma acc loop reduction(max:error)
+    while (max_num_iter > num_iter && max_toch < error) {
+        num_iter++;
+        if (num_iter % 100 == 0 || num_iter == 1) {
+#pragma acc data present(arr_pred[0:raz*raz], arr_new[0:raz*raz])
+#pragma acc kernels async(1)
+            {
+#pragma acc loop independent collapse(2)
                 for (int i = 1; i < raz - 1; i++) {
-                    int ind = j * raz + i;
-                    arr_new[ind] = (arr_pred[ind + raz] + arr_pred[ind - raz] + arr_pred[ind - 1] + arr_pred[ind + 1]) * 0.25;
-                    error = fmax(fabs(arr_new[ind] - arr_pred[ind]), error);
+                    for (int j = 1; j < raz - 1; j++) {
+                        arr_pred[i * raz + j] =0.25 * (arr_new[(i + 1) * raz + j] + arr_new[(i - 1) * raz + j] + arr_new[i * raz + j - 1] + arr_new[i * raz + j + 1]);
+                    }
                 }
             }
-            cublasDcopy(handle, raz * raz, arr_new, 1, arr_pred, 1);
-            
-            if (num_iter % 100 == 0) {
-                printf("Номер итерации: %d, ошибка: %0.8lf\n", num_iter, error);
+            int max_id = 0;
+            const double alpha = -1;
+#pragma acc wait
+#pragma acc host_data use_device(arr_pred, arr_new)
+            {
+                cublasDaxpy(handle, raz * raz, &alpha, arr_pred, 1, arr_new, 1);
+                cublasIdamax(handle, raz * raz, arr_new, 1, &max_id);
             }
-            num_iter++;
-        }
+#pragma acc update self(arr_new[max_id-1:1])
+#pragma acc update self(arr_new[max_id-1:1])
+            error = fabs(arr_new[max_id - 1]);
+#pragma acc host_data use_device(arr_pred, arr_new)
+            cublasDcopy(handle, raz * raz, arr_pred, 1, arr_new, 1);
+#pragma acc wait(1)
+            printf("Номер итерации: %d, ошибка: %0.8lf\n", num_iter, error);
 
-        cublasDestroy(handle);
+        }
+        else {
+#pragma acc data present(arr_pred[0:raz*raz], arr_new[0:raz*raz])
+#pragma acc kernels async(1)
+            {
+#pragma acc loop independent collapse(2)
+                for (int i = 1; i < raz - 1; i++) {
+                    for (int j = 1; j < raz - 1; j++) {
+                        arr_pred[i * raz + j] =0.25 * (arr_new[(i + 1) * raz + j] + arr_new[(i - 1) * raz + j] + arr_new[i * raz + j - 1] + arr_new[i * raz + j + 1]);
+                    }
+                }
+            }
+        }
+        dop = arr_new;
+        arr_new = arr_pred;
+        arr_pred = dop;
     }
 
     printf("Final result: %d, %0.6lf\n", num_iter, error);
     clock_t b=clock();
     double d=(double)(b-a)/CLOCKS_PER_SEC;
     printf("%.25f время в секундах", d);
+    cublasDestroy(handle);
     free(arr_pred);
     free(arr_new);
-
     return 0;
 }
