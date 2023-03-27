@@ -11,8 +11,9 @@ int main(int argc, char *argv[]) {
     double max_toch = atof(argv[2]); // точность
     int raz = atoi(argv[3]); // размер сетки
     clock_t a=clock();
-    double *arr_pred = (double *)malloc(raz * raz * sizeof(double));
-    double *arr_new = (double *)malloc(raz * raz * sizeof(double));
+    double *arr_pred, *arr_new;
+    cudaMalloc((void **)&arr_pred, raz * raz * sizeof(double));
+    cudaMalloc((void **)&arr_new, raz * raz * sizeof(double));
 
     for (int i = 0; i < raz * raz; i++) {
         arr_pred[i] = 0;
@@ -52,6 +53,7 @@ int main(int argc, char *argv[]) {
                 }
             }
             cublasDcopy(handle, raz * raz, arr_new, 1, arr_pred, 1);
+            
             if (num_iter % 100 == 0) {
                 printf("Номер итерации: %d, ошибка: %0.8lf\n", num_iter, error);
             }
