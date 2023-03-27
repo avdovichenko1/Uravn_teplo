@@ -83,6 +83,7 @@ int main(int argc, char *argv[]) {
         arr_new = arr_pred;
         arr_pred = dop;
     }
+    
 
     printf("Final result: %d, %0.6lf\n", num_iter, error);
     clock_t b=clock();
