@@ -44,15 +44,18 @@ int main(int argc, char *argv[]) {
         while (max_num_iter > num_iter && max_toch < error) {
             error = 0;
 #pragma acc kernels loop independent reduction(max:error)
-            for (int j = 1; j < raz - 1; j++) {
+        for (int j = 1; j < raz - 1; j++) {
 #pragma acc loop reduction(max:error)
-                for (int i = 1; i < raz - 1; i++) {
-                    int ind = j * raz + i;
-                    arr_new[ind] = (arr_pred[ind + raz] + arr_pred[ind - raz] + arr_pred[ind - 1] + arr_pred[ind + 1]) * 0.25;
-                    error = fmax(fabs(arr_new[ind] - arr_pred[ind]), error);
-                }
-            }
-            cublasDcopy(handle, raz * raz, arr_new, 1, arr_pred, 1);
+        for (int i = 1; i < raz - 1; i++) {
+            int ind = j * raz + i;
+            arr_new[ind] = (arr_pred[ind + raz] + arr_pred[ind - raz] + arr_pred[ind - 1] + arr_pred[ind + 1]) * 0.25;
+            error = fmax(fabs(arr_new[ind] - arr_pred[ind]), error);
+        }
+    }
+#pragma acc data copy(arr_pred[0:raz*raz], arr_new[0:raz*raz])
+    {
+    cublasDcopy(handle, raz * raz, arr_new, 1, arr_pred, 1);
+    }
             
             if (num_iter % 100 == 0) {
                 printf("Номер итерации: %d, ошибка: %0.8lf\n", num_iter, error);
