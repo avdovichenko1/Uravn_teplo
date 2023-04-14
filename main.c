@@ -22,7 +22,11 @@ int main(int argc, char *argv[]) {
     int num_iter = 0;
     double error = 1 + max_toch;
     double shag = (10.0 / (raz - 1));
+    
+// Выделение памяти на устройстве и копирование данных из памяти хоста в память устройства
 #pragma acc enter data create(arr_pred[0:raz*raz], arr_new[0:raz*raz]) copyin(raz, shag)
+    
+// Ядро, выполняющее циклическое заполнение массива arr_pred
 #pragma acc kernels
     {
 #pragma acc loop independent
@@ -40,9 +44,13 @@ int main(int argc, char *argv[]) {
     while (max_num_iter > num_iter && max_toch < error) {
         num_iter++;
         if (num_iter % 100 == 0 || num_iter == 1) {
+            
+//Объявляется область данных, которые находятся на устройстве и могут быть доступны для ускоренных вычислений с использованием GPU
 #pragma acc data present(arr_pred[0:raz*raz], arr_new[0:raz*raz])
+
 #pragma acc kernels async(1)
             {
+//Эта директива указывает на то, что следующий цикл for может быть распараллелен, collapse(2) отвечает за то, что оба вложенных цикла могут быть распараллелены
 #pragma acc loop independent collapse(2)
                 for (int i = 1; i < raz - 1; i++) {
                     for (int j = 1; j < raz - 1; j++) {
@@ -50,7 +58,8 @@ int main(int argc, char *argv[]) {
                     }
                 }
             }
-            int max_id = 0;
+           
+            int max_id = 0; //использоваться для хранения индекса максимального элемента массива arr_new
             const double alpha = -1;
 #pragma acc wait
 #pragma acc host_data use_device(arr_pred, arr_new)
