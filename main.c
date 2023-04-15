@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
         if (raz==15){
                 for (int i = 0; i < raz; i++) {
                     for (int j = 0; j < raz; j++) {
-                        printf("%0.2lf ", arr_pred[i * raz + j]);
+                        printf("%0.2lf ", arr_new[i * raz + j]);
                     }   
                 printf("\n");
                 }
