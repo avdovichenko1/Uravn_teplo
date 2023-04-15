@@ -71,15 +71,7 @@ int main(int argc, char* argv[]) {
                     arr[index] = array_new[index]; 
                 } 
             } 
- 
-            iter++; 
-        } 
-    } 
- 
-    printf("Final result: %d, %0.6lf\n", iter, err); 
-    
-    
-     //вывод сетки размером 15*15
+ //вывод сетки размером 15*15
         if (Matrix==15){
                 for (int i = 0; i <Matrix; i++) {
                     for (int j = 0; j < Matrix; j++) {
@@ -88,6 +80,14 @@ int main(int argc, char* argv[]) {
                 printf("\n");
                 }
             }
+            iter++; 
+        } 
+    } 
+ 
+    printf("Final result: %d, %0.6lf\n", iter, err); 
+    
+    
+     
     // Free memory 
     free(arr); 
     free(array_new); 
