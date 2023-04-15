@@ -93,6 +93,15 @@ int main(int argc, char *argv[]) {
         arr_pred = dop;
     }
     
+    printf("\nFinal grid:\n");
+    for (int i = 0; i < raz; i++) {
+        for (int j = 0; j < raz; j++) {
+            printf("%0.2lf ", arr_new[i * raz + j]);
+        }
+        printf("\n");
+    }
+
+    
 
     printf("Final result: %d, %0.6lf\n", num_iter, error);
     clock_t b=clock();
