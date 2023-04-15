@@ -23,10 +23,10 @@ int main(int argc, char *argv[]) {
     double error = 1 + max_toch;
     double shag = (10.0 / (raz - 1));
     
-// Выделение памяти на устройстве и копирование данных из памяти хоста в память устройства
+// выделение памяти на устройстве и копирование данных из памяти хоста в память устройства
 #pragma acc enter data create(arr_pred[0:raz*raz], arr_new[0:raz*raz]) copyin(raz, shag)
     
-// Ядро, выполняющее циклическое заполнение массива arr_pred
+// ядро, выполняющее циклическое заполнение массива arr_pred
 #pragma acc kernels
     {
 #pragma acc loop independent
@@ -45,12 +45,13 @@ int main(int argc, char *argv[]) {
         num_iter++;
         if (num_iter % 100 == 0 || num_iter == 1) {
             
-//Объявляется область данных, которые находятся на устройстве и могут быть доступны для ускоренных вычислений с использованием GPU
+//объявляется область данных, которые находятся на устройстве
 #pragma acc data present(arr_pred[0:raz*raz], arr_new[0:raz*raz])
-
+            
+//async(1) указывает, что выполнение этого блока должно начаться после выполнения предыдущего блока
 #pragma acc kernels async(1)
             {
-//Эта директива указывает на то, что следующий цикл for может быть распараллелен, collapse(2) отвечает за то, что оба вложенных цикла могут быть распараллелены
+//директива указывает на то, что следующий цикл for может быть распараллелен, collapse(2) отвечает за то, что оба вложенных цикла могут быть распараллелены
 #pragma acc loop independent collapse(2)
                 for (int i = 1; i < raz - 1; i++) {
                     for (int j = 1; j < raz - 1; j++) {
@@ -59,21 +60,31 @@ int main(int argc, char *argv[]) {
                 }
             }
            
-            int max_id = 0; //использоваться для хранения индекса максимального элемента массива arr_new
+            int max_id = 0; //хранение индекса максимального элемента массива arr_new
             const double alpha = -1;
+            
+// останавливает выполнение программы, пока не завершатся все ядра, запущенные с использованием async()
 #pragma acc wait
+            
+//директива определяет, что данные массивов находятся и на устройстве, и на хосте, и могут использоваться и изменяться на обоих уровнях
 #pragma acc host_data use_device(arr_pred, arr_new)
             {
-                cublasDaxpy(handle, raz * raz, &alpha, arr_pred, 1, arr_new, 1);
-                cublasIdamax(handle, raz * raz, arr_new, 1, &max_id);
+                
+                cublasDaxpy(handle, raz * raz, &alpha, arr_pred, 1, arr_new, 1); // функция вычисляет значение -1 * arr_pred + arr_new и сохраняет результат в arr_new
+                cublasIdamax(handle, raz * raz, arr_new, 1, &max_id); //находит индекс максимального элемента массива arr_new
             }
+//копирует один элемент массива arr_new с индексом max_id-1 с устройства на хост
 #pragma acc update self(arr_new[max_id-1:1])
 #pragma acc update self(arr_new[max_id-1:1])
+            
             error = fabs(arr_new[max_id - 1]);
 #pragma acc host_data use_device(arr_pred, arr_new)
-            cublasDcopy(handle, raz * raz, arr_pred, 1, arr_new, 1);
+            cublasDcopy(handle, raz * raz, arr_pred, 1, arr_new, 1); //функция копирует содержимое массива 
+            
+//указывает, что все ранее запланированные ядра и данные, связанные с ускорителем, должны завершить свою работу, прежде чем продолжить выполнение кода на хост-процессоре
 #pragma acc wait(1)
             printf("Номер итерации: %d, ошибка: %0.8lf\n", num_iter, error);
+            //вывод сетки размером 15*15
             printf("\n%d grid:\n", num_iter);
             if (raz==15){
                 for (int i = 0; i < raz; i++) {
@@ -106,10 +117,10 @@ int main(int argc, char *argv[]) {
 
     printf("Final result: %d, %0.6lf\n", num_iter, error);
     clock_t b=clock();
-    double d=(double)(b-a)/CLOCKS_PER_SEC;
+    double d=(double)(b-a)/CLOCKS_PER_SEC; // переводит в секунды 
     printf("%.25f время в секундах", d);
-    cublasDestroy(handle);
-    free(arr_pred);
+    cublasDestroy(handle); //освобождает ресурсы, связанные с объектом handle
+    free(arr_pred); 
     free(arr_new);
     return 0;
 }
