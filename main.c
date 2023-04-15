@@ -84,16 +84,7 @@ int main(int argc, char *argv[]) {
 //указывает, что все ранее запланированные ядра и данные, связанные с ускорителем, должны завершить свою работу, прежде чем продолжить выполнение кода на хост-процессоре
 #pragma acc wait(1)
             printf("Номер итерации: %d, ошибка: %0.8lf\n", num_iter, error);
-            //вывод сетки размером 15*15
-            printf("\n%d grid:\n", num_iter);
-            if (raz==15){
-                for (int i = 0; i < raz; i++) {
-                    for (int j = 0; j < raz; j++) {
-                        printf("%0.2lf ", arr_new[i * raz + j]);
-                    }   
-                printf("\n");
-                }
-            }
+            
 
         }
         else {
@@ -111,6 +102,16 @@ int main(int argc, char *argv[]) {
         dop = arr_new;
         arr_new = arr_pred;
         arr_pred = dop;
+        //вывод сетки размером 15*15
+        printf("\n%d grid:\n", num_iter);
+        if (raz==15){
+                for (int i = 0; i < raz; i++) {
+                    for (int j = 0; j < raz; j++) {
+                        printf("%0.2lf ", arr_pred[i * raz + j]);
+                    }   
+                printf("\n");
+                }
+            }
     }
 
     
