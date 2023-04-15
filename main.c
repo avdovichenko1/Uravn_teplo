@@ -74,6 +74,15 @@ int main(int argc, char *argv[]) {
             cublasDcopy(handle, raz * raz, arr_pred, 1, arr_new, 1);
 #pragma acc wait(1)
             printf("Номер итерации: %d, ошибка: %0.8lf\n", num_iter, error);
+            printf("\n%d grid:\n", num_iter);
+            if (raz==15){
+                for (int i = 0; i < raz; i++) {
+                    for (int j = 0; j < raz; j++) {
+                        printf("%0.2lf ", arr_new[i * raz + j]);
+                    }   
+                printf("\n");
+                }
+            }
 
         }
         else {
@@ -91,14 +100,6 @@ int main(int argc, char *argv[]) {
         dop = arr_new;
         arr_new = arr_pred;
         arr_pred = dop;
-    }
-    
-    printf("\nFinal grid:\n");
-    for (int i = 0; i < raz; i++) {
-        for (int j = 0; j < raz; j++) {
-            printf("%0.2lf ", arr_new[i * raz + j]);
-        }
-        printf("\n");
     }
 
     
