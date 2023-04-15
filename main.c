@@ -102,7 +102,10 @@ int main(int argc, char *argv[]) {
         dop = arr_new;
         arr_new = arr_pred;
         arr_pred = dop;
-        //вывод сетки размером 15*15
+       
+    }
+
+     //вывод сетки размером 15*15
         printf("\n%d grid:\n", num_iter);
         if (raz==15){
                 for (int i = 0; i < raz; i++) {
@@ -112,9 +115,6 @@ int main(int argc, char *argv[]) {
                 printf("\n");
                 }
             }
-    }
-
-    
 
     printf("Final result: %d, %0.6lf\n", num_iter, error);
     clock_t b=clock();
