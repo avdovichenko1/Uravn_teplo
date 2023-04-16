@@ -15,9 +15,9 @@ int main(int argc, char *argv[]) {
     double* arr_new = (double*)calloc(raz * raz, sizeof(double));
 
     arr_pred[0] = 10;
-    arr_pred[raz] = 20;
-    arr_pred[raz * (raz - 1) + 1] = 20;
-    arr_pred[raz * raz] = 30;
+    arr_pred[raz-1] = 20;
+    arr_pred[raz * (raz - 1) +raz - 1] = 20;
+    arr_pred[raz * (raz-1)] = 30;
 
     int num_iter = 0;
     double error = 1 + max_toch;
