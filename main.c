@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
         } 
     } 
  
-    #printf("Final result: %d, %0.6lf\n", iter, err); 
+    //printf("Final result: %d, %0.6lf\n", iter, err); 
     
     printf("\n%d grid:\n", iter);
      //вывод сетки размером 15*15
