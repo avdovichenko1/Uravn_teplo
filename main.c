@@ -1,102 +1,127 @@
-#include <stdio.h> 
-#include <stdlib.h> 
-#include <math.h> 
-#include <time.h> 
- 
-int main(int argc, char* argv[]) { 
-     
-    double time_spent1 = 0.0; 
- 
-    clock_t begin1 = clock();  
-     
-    // Check if enough arguments are provided 
-    if (argc < 4) { 
-        printf("Usage: ./program_name Matrix accuracy iterations\n"); 
-        return 1; 
-    } 
- 
-    // Convert command line arguments to integers 
-    int Matrix = atoi(argv[3]); 
-    double accuracy = atof(argv[2]); 
-    int iterations = atoi(argv[1]); 
-     
-    // Allocate 2D arrays on host memory 
-    double* arr = (double*)malloc(Matrix * Matrix * sizeof(double)); 
-    double* array_new = (double*)malloc(Matrix * Matrix * sizeof(double)); 
-    // Initialize arrays to zero 
-    for (int i = 0; i < Matrix * Matrix; i++) { 
-        arr[i] = 0; 
-        array_new[i] = 0; 
-    } 
-    // Set boundary conditions 
-    arr[0 * Matrix + 0] = 10; 
-    arr[0 * Matrix + Matrix - 1] = 20; 
-    arr[(Matrix - 1) * Matrix + 0] = 20; 
-    arr[(Matrix - 1) * Matrix + Matrix - 1] = 30; 
-     
-    for (int j = 1; j < Matrix; j++) { 
-            arr[0 * Matrix + j] = (arr[0 * Matrix + Matrix - 1] - arr[0 * Matrix + 0]) / (Matrix - 1) + arr[0 * Matrix + j - 1];   //top 
-            arr[(Matrix - 1) * Matrix + j] = (arr[(Matrix - 1) * Matrix + Matrix - 1] - arr[(Matrix - 1) * Matrix + 0]) / (Matrix - 1) + arr[(Matrix - 1) * Matrix + j - 1]; //bottom 
-            arr[j * Matrix + 0] = (arr[(Matrix - 1) * Matrix + 0] - arr[0 * Matrix + 0]) / (Matrix - 1) + arr[(j - 1) * Matrix + 0]; //left 
-            arr[j * Matrix + Matrix - 1] = (arr[(Matrix - 1) * Matrix + Matrix - 1] - arr[0 * Matrix + Matrix - 1]) / (Matrix - 1) + arr[(j - 1) * Matrix + Matrix - 1]; //right 
-        } 
-    // Main loop 
-    double err = accuracy + 1; 
-    int iter = 0; 
- 
-#pragma acc data copy(arr[0:Matrix*Matrix], array_new[0:Matrix*Matrix]) 
-    { 
-        while (err > accuracy  && iter < iterations) { 
-            // Compute new values 
-            err = 0; 
-#pragma acc parallel reduction(max:err) 
-{ 
-    #pragma acc loop independent 
-            for (int j = 1; j < Matrix - 1; j++) { 
-#pragma acc loop independent 
-                for (int i = 1; i < Matrix - 1; i++) { 
-                    int index = j * Matrix + i; 
-                    array_new[index] = 0.25 * (arr[index + Matrix] + arr[index - Matrix] + 
-                        arr[index - 1] + arr[index + 1]); 
-                    err = fmax(err, fabs(array_new[index] - arr[index])); 
-                } 
-            } 
-} 
-            // Update values 
-#pragma acc kernels loop independent 
-            for (int j = 1; j < Matrix - 1; j++) { 
-#pragma acc loop 
-                for (int i = 1; i < Matrix - 1; i++) { 
-                    int index = j * Matrix + i; 
-                    arr[index] = array_new[index]; 
-                } 
-            } 
- 
-            iter++; 
-        } 
-    } 
- 
-    //printf("Final result: %d, %0.6lf\n", iter, err); 
+#include <cublas_v2.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <time.h>
+
+
+int main(int argc, char *argv[]) {
+    int max_num_iter = atoi(argv[1]); // количество итераций
+    double max_toch = atof(argv[2]); // точность
+    int raz = atoi(argv[3]); // размер сетки
+    clock_t a=clock();
+
+    double* arr_pred = (double*)calloc(raz * raz, sizeof(double));
+    double* arr_new = (double*)calloc(raz * raz, sizeof(double));
+
+    arr_pred[0] = 10;
+    arr_pred[raz-1] = 20;
+    arr_pred[raz * (raz - 1) +raz - 1] = 30;
+    arr_pred[raz * (raz-1)] = 20;
+
+    int num_iter = 0;
+    double error = 1 + max_toch;
+    double shag = (10.0 / (raz - 1));
     
-    printf("\n%d grid:\n", iter);
+// выделение памяти на устройстве и копирование данных из памяти хоста в память устройства
+#pragma acc enter data create(arr_pred[0:raz*raz], arr_new[0:raz*raz]) copyin(raz, shag)
+    
+// ядро, выполняющее циклическое заполнение массива arr_pred
+#pragma acc kernels
+    {
+#pragma acc loop independent
+        for (int j = 0; j < raz; j++) {
+            arr_pred[j] = 10 + j * (10.0 / (raz - 1));
+            arr_pred[j * raz] = 10 + j * (10.0 / (raz - 1));
+            arr_pred[(raz - 1) * raz + j] = 20 + j * (10.0 / (raz - 1));
+            arr_pred[j * raz + (raz - 1)] = 20 + j * (10.0 / (raz - 1));
+        }
+    }
+    cublasHandle_t handle;
+    cublasCreate(&handle);
+    double *dop;
+
+    while (max_num_iter > num_iter && max_toch < error) {
+        num_iter++;
+        if (num_iter % 100 == 0 || num_iter == 1) {
+            
+//объявляется область данных, которые находятся на устройстве
+#pragma acc data present(arr_pred[0:raz*raz], arr_new[0:raz*raz])
+            
+//async(1) указывает, что выполнение этого блока должно начаться после выполнения предыдущего блока
+#pragma acc kernels async(1)
+            {
+//директива указывает на то, что следующий цикл for может быть распараллелен, collapse(2) отвечает за то, что оба вложенных цикла могут быть распараллелены
+#pragma acc loop independent collapse(2)
+                for (int i = 1; i < raz - 1; i++) {
+                    for (int j = 1; j < raz - 1; j++) {
+                        arr_pred[i * raz + j] =0.25 * (arr_new[(i + 1) * raz + j] + arr_new[(i - 1) * raz + j] + arr_new[i * raz + j - 1] + arr_new[i * raz + j + 1]);
+                    }
+                }
+            }
+           
+            int max_id = 0; //хранение индекса максимального элемента массива arr_new
+            const double alpha = -1;
+            
+// останавливает выполнение программы, пока не завершатся все ядра, запущенные с использованием async()
+#pragma acc wait
+            
+//директива определяет, что данные массивов находятся и на устройстве, и на хосте, и могут использоваться и изменяться на обоих уровнях
+#pragma acc host_data use_device(arr_pred, arr_new)
+            {
+                
+                cublasDaxpy(handle, raz * raz, &alpha, arr_pred, 1, arr_new, 1); // функция вычисляет значение -1 * arr_pred + arr_new и сохраняет результат в arr_new
+                cublasIdamax(handle, raz * raz, arr_new, 1, &max_id); //находит индекс максимального элемента массива arr_new
+            }
+//копирует один элемент массива arr_new с индексом max_id-1 с устройства на хост
+#pragma acc update self(arr_new[max_id-1:1])
+#pragma acc update self(arr_new[max_id-1:1])
+            
+            error = fabs(arr_new[max_id - 1]);
+#pragma acc host_data use_device(arr_pred, arr_new)
+            cublasDcopy(handle, raz * raz, arr_pred, 1, arr_new, 1); //функция копирует содержимое массива 
+            
+//указывает, что все ранее запланированные ядра и данные, связанные с ускорителем, должны завершить свою работу, прежде чем продолжить выполнение кода на хост-процессоре
+#pragma acc wait(1)
+            printf("Номер итерации: %d, ошибка: %0.8lf\n", num_iter, error);
+            
+
+        }
+        else {
+#pragma acc data present(arr_pred[0:raz*raz], arr_new[0:raz*raz])
+#pragma acc kernels async(1)
+            {
+#pragma acc loop independent collapse(2)
+                for (int i = 1; i < raz - 1; i++) {
+                    for (int j = 1; j < raz - 1; j++) {
+                        arr_pred[i * raz + j] =0.25 * (arr_new[(i + 1) * raz + j] + arr_new[(i - 1) * raz + j] + arr_new[i * raz + j - 1] + arr_new[i * raz + j + 1]);
+                    }
+                }
+            }
+        }
+        dop = arr_new;
+        arr_new = arr_pred;
+        arr_pred = dop;
+       
+    }
+
      //вывод сетки размером 15*15
-        if (Matrix==15){
-                for (int i = 0; i <Matrix; i++) {
-                    for (int j = 0; j < Matrix; j++) {
-                        printf("%0.2lf ", arr[i * Matrix + j]);
+        printf("\n%d grid:\n", num_iter);
+        if (raz==15){
+                for (int i = 0; i < raz; i++) {
+                    for (int j = 0; j < raz; j++) {
+                        printf("%0.2lf ", arr_new[i * raz + j]);
                     }   
                 printf("\n");
                 }
             }
- printf("Final result: %d, %0.6lf\n", iter, err); 
-    // Free memory 
-    free(arr); 
-    free(array_new); 
- 
-     
-    clock_t end1 = clock(); 
-    time_spent1 += (double)(end1 - begin1) / CLOCKS_PER_SEC; 
-    printf("%.25f время в секундах", time_spent1); 
-     
-    return 0; 
+
+    printf("Final result: %d, %0.6lf\n", num_iter, error);
+    clock_t b=clock();
+    double d=(double)(b-a)/CLOCKS_PER_SEC; // переводит в секунды 
+    printf("%.25f время в секундах", d);
+    cublasDestroy(handle); //освобождает ресурсы, связанные с объектом handle
+    free(arr_pred); 
+    free(arr_new);
+    return 0;
 }
