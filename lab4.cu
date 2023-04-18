@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <malloc.h>
+#include <time.h>
 
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
@@ -47,6 +48,7 @@ __global__ void errorReduce(double* er_1d, double* er_blocks, int size){
         er_blocks[blockIdx.x] = shArr[0];
 }
 int main(int argc, char* argv[]) {
+    clock_t a=clock();
     int size;
     double tol;
     int iter_max;
@@ -136,5 +138,8 @@ int main(int argc, char* argv[]) {
         }
     }
     printf("%d : %lf\n", iter_host, error_host);
+    clock_t b=clock();
+    double d=(double)(b-a)/CLOCKS_PER_SEC; // переводит в секунды 
+    printf("%.25f время в секундах", d);
     return 0;
 }
