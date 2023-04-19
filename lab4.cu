@@ -35,23 +35,24 @@ __global__ void heatError(const double* arr_pred, double* arr_new, int N, double
         };
 }
 
-__global__ void errorReduce(double* er_1d, double* er_blocks, int size){
-    int tid = threadIdx.x;
-    int gid = blockDim.x * blockIdx.x + threadIdx.x;
-    int gsz = blockDim.x * gridDim.x;
-    double error = er_1d[0];
-    for (int i  = gid; i < size; i+= gsz)
-        error = max(error, er_1d[i]);
-    extern __shared__ double shArr[];
-    shArr[tid] = error;
+
+__global__ void reduceError(double* input_error, double* block_errors, int size){
+    int thread_id = threadIdx.x;
+    int global_id = blockDim.x * blockIdx.x + threadIdx.x;
+    int global_size = blockDim.x * gridDim.x;
+    double error = input_error[0];
+    for (int i = global_id; i < size; i += global_size)
+        error = max(error, input_error[i]);
+    extern __shared__ double shared_array[];
+    shared_array[thread_id] = error;
     __syncthreads();
-    for (int sz = blockDim.x / 2; sz > 0; sz /=2){
-        if (tid < sz)
-            shArr[tid] = max(shArr[tid + sz], shArr[tid]);
+    for (int step = blockDim.x / 2; step > 0; step /= 2){
+        if (thread_id < step)
+            shared_array[thread_id] = max(shared_array[thread_id + step], shared_array[thread_id]);
         __syncthreads();
     }
-    if (tid == 0)
-        er_blocks[blockIdx.x] = shArr[0];
+    if (thread_id == 0)
+        block_errors[blockIdx.x] = shared_array[0];
 }
 
 
