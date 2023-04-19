@@ -6,7 +6,7 @@
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
 
-__global__ void heat(const double* arr_pred, double* arr_new, int N){
+__global__ void updateTemperature(const double* arr_pred, double* arr_new, int N){
     //Индекс i вычисляется как произведение номера блока по вертикальной оси (blockIdx.y) на размер блока по вертикальной оси
     // (blockDim.y),плюс номер потока внутри блока по вертикальной оси (threadIdx.y), что позволяет потокам различных блоков
     // и потокам внутри одного блока работать с различными строками массива данных, j - аналогично.
@@ -22,7 +22,7 @@ __global__ void heat(const double* arr_pred, double* arr_new, int N){
                                                arr_pred[i * (N + 2) + j - 1] + arr_pred[i * (N + 2) + j + 1]);
 }
 
-__global__ void heatError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
+__global__ void updateError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
 
     int i = blockIdx.y * blockDim.y + threadIdx.y;
     int j = blockIdx.x * blockDim.x + threadIdx.x;
@@ -31,28 +31,27 @@ __global__ void heatError(const double* arr_pred, double* arr_new, int N, double
         if (j > 0 && j < N + 1) {
             arr_new[i * (N + 2) + j] = 0.25 * (arr_pred[(i + 1) * (N + 2) + j] + arr_pred[(i - 1) * (N + 2) + j] + arr_pred[i * (N + 2) + j - 1] + arr_pred[i * (N + 2) + j + 1]);
             //Вычисление значения погрешности между новым значением элемента и соответствующим предыдущим значением элемента
-            tol1[(j * i) - 1] = max(arr_new[i * (N + 2) + j] - arr_pred[i * (N + 2) + j], tol);
+            tol1[j * i - 1] = max(arr_new[i * (N + 2) + j] - arr_pred[i * (N + 2) + j], tol);
         };
 }
 
-
-__global__ void reduceError(double* input_error, double* block_errors, int size){
-    int thread_id = threadIdx.x;
-    int global_id = blockDim.x * blockIdx.x + threadIdx.x;
-    int global_size = blockDim.x * gridDim.x;
-    double error = input_error[0];
-    for (int i = global_id; i < size; i += global_size)
-        error = max(error, input_error[i]);
-    extern __shared__ double shared_array[];
-    shared_array[thread_id] = error;
+__global__ void reduceError(double* er_1d, double* er_blocks, int size){
+    int tid = threadIdx.x;
+    int gid = blockDim.x * blockIdx.x + threadIdx.x;
+    int gsz = blockDim.x * gridDim.x;
+    double error = er_1d[0];
+    for (int i  = gid; i < size; i+= gsz)
+        error = max(error, er_1d[i]);
+    extern __shared__ double shArr[];
+    shArr[tid] = error;
     __syncthreads();
-    for (int step = blockDim.x / 2; step > 0; step /= 2){
-        if (thread_id < step)
-            shared_array[thread_id] = max(shared_array[thread_id + step], shared_array[thread_id]);
+    for (int sz = blockDim.x / 2; sz > 0; sz /=2){
+        if (tid < sz)
+            shArr[tid] = max(shArr[tid + sz], shArr[tid]);
         __syncthreads();
     }
-    if (thread_id == 0)
-        block_errors[blockIdx.x] = shared_array[0];
+    if (tid == 0)
+        er_blocks[blockIdx.x] = shArr[0];
 }
 
 
@@ -131,13 +130,13 @@ int main(int argc, char* argv[]) {
         iter_host++;
         if ((iter_host % 150 == 0) || (iter_host == 1)){
             error_host = 0.0;
-            heatError<<<GS, BS>>>(d_A, d_Anew, size, error_host, d_err_1d);
-            errorReduce<<<errGS, errBS, (errBS.x) * sizeof(double)>>>(d_err_1d, dev_out,  size * size);
-            errorReduce<<<1, errBS, (errBS.x) * sizeof(double)>>>(dev_out, d_err_1d, errGS.x);
+            updateError<<<GS, BS>>>(d_A, d_Anew, size, error_host, d_err_1d);
+            reduceError<<<errGS, errBS, (errBS.x) * sizeof(double)>>>(d_err_1d, dev_out, size * size);
+            reduceError<<<1, errBS, (errBS.x) * sizeof(double)>>>(dev_out, d_err_1d, errGS.x);
             cudaMemcpy(&error_host, &d_err_1d[0], sizeof(double), cudaMemcpyDeviceToHost);
         }
         else
-            heat<<<GS, BS>>>(d_A, d_Anew, size);
+            updateTemperature<<<GS, BS>>>(d_A, d_Anew, size);
         d_ptr = d_A;
         d_A = d_Anew;
         d_Anew = d_ptr;
