@@ -7,24 +7,34 @@
 
 
 __global__ void heat(const double* arr_pred, double* arr_new, int N){
-    
+    //Индекс i вычисляется как произведение номера блока по вертикальной оси (blockIdx.y) на размер блока по вертикальной оси
+    // (blockDim.y),плюс номер потока внутри блока по вертикальной оси (threadIdx.y), что позволяет потокам различных блоков
+    // и потокам внутри одного блока работать с различными строками массива данных, j - аналогично.
     int i = blockIdx.y * blockDim.y + threadIdx.y;
     int j = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    if (i > 0 && i < N + 1 && j > 0 && j < N + 1)
-        arr_new[i * (N + 2) + j] = 0.25 * (arr_pred[(i + 1) * (N + 2) + j] + arr_pred[(i - 1) * (N + 2) + j] + arr_pred[i * (N + 2) + j - 1] + arr_pred[i * (N + 2) + j + 1]);
+
+//проверяется, что индексы i и j находятся внутри диапазона от 1 до N + 1, чтобы исключить обработку граничных элементов массива.
+    if (i > 0 && i < N + 1)
+        if (j > 0 && j < N + 1)
+            //новое значение элемента массива arr_new[i * (N + 2) + j] вычисляется на основе предыдущего состояния массива
+            // arr_pred,используя формулу теплопроводности
+            arr_new[i * (N + 2) + j] = 0.25 * (arr_pred[(i + 1) * (N + 2) + j] + arr_pred[(i - 1) * (N + 2) + j] +
+                                               arr_pred[i * (N + 2) + j - 1] + arr_pred[i * (N + 2) + j + 1]);
 }
+
 __global__ void heatError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
-    
+
     int i = blockIdx.y * blockDim.y + threadIdx.y;
     int j = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    if (i > 0 && i < N + 1 && j > 0 && j < N + 1){
-        arr_new[i * (N + 2) + j] = 0.25 * (arr_pred[(i + 1) * (N + 2) + j] + arr_pred[(i - 1) * (N + 2) + j] + arr_pred[i * (N + 2) + j - 1] + arr_pred[i * (N + 2) + j + 1]);
-        int ind1 = (j * i) - 1;
-        tol1[ind1] = max(arr_new[i * (N + 2) + j] - arr_pred[i * (N + 2) + j], tol);
-    }
+
+    if (i > 0 && i < N + 1)
+        if (j > 0 && j < N + 1) {
+            arr_new[i * (N + 2) + j] = 0.25 * (arr_pred[(i + 1) * (N + 2) + j] + arr_pred[(i - 1) * (N + 2) + j] + arr_pred[i * (N + 2) + j - 1] + arr_pred[i * (N + 2) + j + 1]);
+            //Вычисление значения погрешности между новым значением элемента и соответствующим предыдущим значением элемента
+            tol1[(j * i) - 1] = max(arr_new[i * (N + 2) + j] - arr_pred[i * (N + 2) + j], tol);
+        };
 }
+
 __global__ void errorReduce(double* er_1d, double* er_blocks, int size){
     int tid = threadIdx.x;
     int gid = blockDim.x * blockIdx.x + threadIdx.x;
@@ -43,6 +53,8 @@ __global__ void errorReduce(double* er_1d, double* er_blocks, int size){
     if (tid == 0)
         er_blocks[blockIdx.x] = shArr[0];
 }
+
+
 int main(int argc, char* argv[]) {
     clock_t a=clock();
     int size;
