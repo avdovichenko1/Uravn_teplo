@@ -35,23 +35,23 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
         };
 }
 
-__global__ void reduceError(double* tol1, double* er_blocks, int size){
-    int tid = threadIdx.x;
-    int gid = blockDim.x * blockIdx.x + threadIdx.x;
-    int gsz = blockDim.x * gridDim.x;
-    double error = tol1[0];
-    for (int i  = gid; i < size; i+= gsz)
-        error = max(error, tol1[i]);
-    extern __shared__ double shArr[];
-    shArr[tid] = error;
+__global__ void reduceError(double* tol1, double* tolbl, int N){
+    int thread_id = threadIdx.x;
+    int global_id = blockDim.x * blockIdx.x + threadIdx.x;
+    int global_size = blockDim.x * gridDim.x;
+    double tol = tol1[0];
+    for (int i  = global_id; i < N; i+= global_size)
+        tol = max(tol, tol1[i]);
+    extern __shared__ double shared_array[];
+    shared_array[thread_id] = tol;
     __syncthreads();
     for (int sz = blockDim.x / 2; sz > 0; sz /=2){
-        if (tid < sz)
-            shArr[tid] = max(shArr[tid + sz], shArr[tid]);
+        if (thread_id < sz)
+            shared_array[thread_id] = max(shared_array[thread_id + sz], shared_array[thread_id]);
         __syncthreads();
     }
-    if (tid == 0)
-        er_blocks[blockIdx.x] = shArr[0];
+    if (thread_id == 0)
+        tolbl[blockIdx.x] = shared_array[0];
 }
 
 
