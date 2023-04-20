@@ -35,13 +35,13 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
         };
 }
 
-__global__ void reduceError(double* er_1d, double* er_blocks, int size){
+__global__ void reduceError(double* tol1, double* er_blocks, int size){
     int tid = threadIdx.x;
     int gid = blockDim.x * blockIdx.x + threadIdx.x;
     int gsz = blockDim.x * gridDim.x;
-    double error = er_1d[0];
+    double error = tol1[0];
     for (int i  = gid; i < size; i+= gsz)
-        error = max(error, er_1d[i]);
+        error = max(error, tol1[i]);
     extern __shared__ double shArr[];
     shArr[tid] = error;
     __syncthreads();
