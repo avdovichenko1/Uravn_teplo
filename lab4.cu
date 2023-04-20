@@ -37,18 +37,23 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
 
 __global__ void reduceError(double* tol1, double* tolbl, int N){
     int thread_id = threadIdx.x;
-    int global_id = blockDim.x * blockIdx.x + threadIdx.x;
     int global_size = blockDim.x * gridDim.x;
+    int global_id = blockDim.x * blockIdx.x + threadIdx.x;
     double tol = tol1[0];
-    for (int i  = global_id; i < N; i+= global_size)
+    int i  = global_id;
+    while(i < N){
         tol = max(tol, tol1[i]);
+        i += global_size;
+    }
     extern __shared__ double shared_array[];
     shared_array[thread_id] = tol;
     __syncthreads();
-    for (int sz = blockDim.x / 2; sz > 0; sz /=2){
-        if (thread_id < sz)
-            shared_array[thread_id] = max(shared_array[thread_id + sz], shared_array[thread_id]);
+    int size = blockDim.x / 2;
+    while (size > 0){
+        if (size > thread_id)
+            shared_array[thread_id] = max(shared_array[thread_id + size], shared_array[thread_id]);
         __syncthreads();
+        size /= 2;
     }
     if (thread_id == 0)
         tolbl[blockIdx.x] = shared_array[0];
