@@ -6,9 +6,32 @@
 
 
 int main(int argc, char *argv[]) {
-    int max_num_iter = atoi(argv[1]); // количество итераций
-    double max_toch = atof(argv[2]); // точность
-    int raz = atoi(argv[3]); // размер сетки
+    int max_num_iter;
+    int raz;
+    double max_toch;
+    if (argc < 4){
+        printf("Not enough args");
+        exit(1);
+    }
+    else
+    {
+        max_num_iter = atoi(argv[1]); // количество итераций
+        if (max_num_iter == 0){
+            printf("incorrect first param");
+            exit(1);
+        }
+        max_toch = atof(argv[2]); // точность
+        if (max_toch == 0){
+            printf("incorrect second param");
+            exit(1);
+        }
+        raz = atoi(argv[3]); // размер сетки
+        if (raz == 0){
+            printf("incorrect third param");
+            exit(1);
+        }
+    }
+   
     clock_t a=clock();
 
     double* arr_pred = (double*)calloc(raz * raz, sizeof(double));
