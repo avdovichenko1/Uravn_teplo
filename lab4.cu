@@ -91,12 +91,9 @@ int main(int argc, char* argv[]) {
     double *arr_pred = (double*)malloc((size + 2) * (size + 2) * sizeof(double));
     double *arr_new = (double*)malloc((size + 2) * (size + 2) * sizeof(double));
 
-    int size_pot=32;
-
-    
-    dim3 Block_size(size_pot, size_pot, 1); //
-    dim3 GS((size + 33)/size_pot, (size + 33)/size_pot, 1);
-
+    int size_pot=32; // количество потоков
+    dim3 Block_size(size_pot, size_pot, 1); //размер блока и определение количества потоков в каждом блоке, 1 блок - 1024 потока
+    dim3 Grid_Size((size + 33)/size_pot, (size + 33)/size_pot, 1);
 
     double* d_A, *d_Anew;
     cudaMalloc((void**)&d_A, sizeof(double ) *(size+ 2)*(size+2));
@@ -139,13 +136,13 @@ int main(int argc, char* argv[]) {
         iter_host++;
         if ((iter_host % 150 == 0) || (iter_host == 1)){
             error_host = 0.0;
-            updateError<<<GS, Block_size>>>(d_A, d_Anew, size, error_host, d_err_1d);
+            updateError<<<Grid_Size, Block_size>>>(d_A, d_Anew, size, error_host, d_err_1d);
             reduceError<<<errGS, errBS, (errBS.x) * sizeof(double)>>>(d_err_1d, dev_out, size * size);
             reduceError<<<1, errBS, (errBS.x) * sizeof(double)>>>(dev_out, d_err_1d, errGS.x);
             cudaMemcpy(&error_host, &d_err_1d[0], sizeof(double), cudaMemcpyDeviceToHost);
         }
         else
-            updateTemperature<<<GS, Block_size>>>(d_A, d_Anew, size);
+            updateTemperature<<<Grid_Size, Block_size>>>(d_A, d_Anew, size);
         d_ptr = d_A;
         d_A = d_Anew;
         d_Anew = d_ptr;
