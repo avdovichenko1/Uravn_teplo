@@ -119,6 +119,9 @@ int main(int argc, char* argv[]) {
         arr_new[len_host * i + size + 1] = arr_pred[len_host * i + size + 1];
     }
 
+    double* d_ptr;
+    cudaMalloc((void **)(&d_ptr), sizeof(double)); // временное хранение указателя на GPU
+
     double* mas_error;
     cudaMalloc(&mas_error, sizeof(double) * (size * size)); // выделение памяти для GPU
     // копирование данных из хоста на устройство
@@ -126,36 +129,38 @@ int main(int argc, char* argv[]) {
     cudaMemcpy(arr_new_gp, arr_new, sizeof(double) * (size + 2) * (size + 2), cudaMemcpyHostToDevice);
 
 
-    dim3 Error_block(1024,1,1);
-    dim3 Error_grid(ceil((size * size)/(float)Error_block.x), 1, 1);
-    double* dev_out;
-    cudaMalloc(&dev_out, sizeof(double) * Error_grid.x);
+    dim3 Error_block(1024,1,1); //  размер блока (block size) для запуска ядра на GPU
+    dim3 Error_grid(ceil((size * size)/(float)Error_block.x), 1, 1); // размер сетки для запуска ядра на GPU
 
+    double* itog; // указатель на выделенную память на GPU для хранения результата вычислений ядра reduceError
+    cudaMalloc(&itog, sizeof(double) * Error_grid.x);
 
-    double* d_ptr;
-    cudaMalloc((void **)(&d_ptr), sizeof(double));
+    cudaDeviceSynchronize(); // для синхронизации выполнения всех операций на устройстве CUDA
 
-    cudaDeviceSynchronize();
     while ((error > tol) && (num_iter < iter_max)){
         num_iter++;
-        if ((num_iter % 150 == 0) || (num_iter == 1)){
+        if ((num_iter % 100 == 0) || (num_iter == 1)){
             error = 0.0;
-            updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, mas_error);
-            reduceError<<<Error_grid, Error_block, (Error_block.x) * sizeof(double)>>>(mas_error, dev_out, size * size);
-            reduceError<<<1, Error_block, (Error_block.x) * sizeof(double)>>>(dev_out, mas_error, Error_grid.x);
+            updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, mas_error); // ядро обновляет значения массивов arr_pred_gp и arr_new_gp
+            reduceError<<<Error_grid, Error_block, (Error_block.x) * sizeof(double)>>>(mas_error, itog, size * size);
+            reduceError<<<1, Error_block, (Error_block.x) * sizeof(double)>>>(itog, mas_error, Error_grid.x);
             cudaMemcpy(&error, &mas_error[0], sizeof(double), cudaMemcpyDeviceToHost);
-        }
-        else
-            updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size);
-        d_ptr = arr_pred_gp;
-        arr_pred_gp = arr_new_gp;
-        arr_new_gp = d_ptr;
-        if ((num_iter % 150 == 0) || (num_iter == 1)){
+            
+            d_ptr = arr_pred_gp;
+            arr_pred_gp = arr_new_gp;
+            arr_new_gp = d_ptr;
+
             printf("%d : %lf\n", num_iter, error);
             fflush(stdout);
         }
+        else {
+            updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size);
+            d_ptr = arr_pred_gp;
+            arr_pred_gp = arr_new_gp;
+            arr_new_gp = d_ptr;
+        }
     }
-    printf("%d : %lf\n", num_iter, error);
+    printf("Финальные результаты: %d, %0.6lf\n", num_iter, error);
     clock_t b=clock();
     double d=(double)(b-a)/CLOCKS_PER_SEC; // переводит в секунды
     printf("%.25f время в секундах", d);
