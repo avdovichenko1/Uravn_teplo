@@ -150,7 +150,7 @@ int main(int argc, char* argv[]) {
             arr_pred_gp = arr_new_gp;
             arr_new_gp = d_ptr;
 
-            printf("%d : %lf\n", num_iter, error);
+            printf("%d : %0.8lf\n", num_iter, error);
             fflush(stdout);
         }
         else {
