@@ -145,13 +145,13 @@ int main(int argc, char* argv[]) {
             reduceError<<<Error_grid, Error_block, (Error_block.x) * sizeof(double)>>>(mas_error, itog, size * size);
             reduceError<<<1, Error_block, (Error_block.x) * sizeof(double)>>>(itog, mas_error, Error_grid.x);
             cudaMemcpy(&error, &mas_error[0], sizeof(double), cudaMemcpyDeviceToHost);
-            
+
             d_ptr = arr_pred_gp;
             arr_pred_gp = arr_new_gp;
             arr_new_gp = d_ptr;
 
-            printf("%d : %0.8lf\n", num_iter, error);
-            fflush(stdout);
+            printf("%d : %lf\n", num_iter, error);
+            fflush(stdout); //  проверить, что все данные, которые были записаны в буфер вывода с помощью функции printf(), записались
         }
         else {
             updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size);
