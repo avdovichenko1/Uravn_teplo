@@ -127,7 +127,7 @@ int main(int argc, char* argv[]) {
 
 
     dim3 Error_block(1024,1,1);
-    dim3 errGS(ceil((size * size)/(float)errBS.x), 1, 1);
+    dim3 errGS(ceil((size * size)/(float)Error_block.x), 1, 1);
     double* dev_out;
     cudaMalloc(&dev_out, sizeof(double) * errGS.x);
 
