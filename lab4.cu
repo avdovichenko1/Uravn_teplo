@@ -66,29 +66,28 @@ int main(int argc, char* argv[]) {
     double tol;
     int iter_max;
     if (argc < 4){
-        printf("Not enough args");
+        printf("Неправильное количество аргументов");
         exit(1);
     }
-    else
-    {
-        tol = strtod(argv[1], NULL);
-        if (tol == 0){
-            printf("incorrect first param");
-            exit(1);
-        }
-        size = atoi(argv[2]);
-        if (size == 0){
-            printf("incorrect second param");
-            exit(1);
-        }
-        iter_max = atoi(argv[3]);
-        if (iter_max == 0){
-            printf("incorrect third param");
-            exit(1);
-        }
+    tol = strtod(argv[1], NULL);
+    if (tol <= 0){
+        printf("Ограничение точности должно превышать 0");
+        exit(1);
     }
-    double *A = (double*)malloc((size + 2)*(size + 2) * sizeof(double));
-    double *Anew = (double*)malloc((size + 2)*(size + 2) * sizeof(double));
+    size = atoi(argv[2]);
+    if (size <= 0){
+        printf("Размер матриццы должен быть больше 0");
+        exit(1);
+    }
+    iter_max = atoi(argv[3]);
+    if (iter_max <= 0){
+        printf("Максимальное количество итераци должно быть больше 0");
+        exit(1);
+    }
+
+    double *arr_pred = (double*)malloc((size + 2) * (size + 2) * sizeof(double));
+    double *arr_new = (double*)malloc((size + 2) * (size + 2) * sizeof(double));
+    
     dim3 BS(32, 32, 1);
     dim3 GS((size + 2 + 31)/32, (size + 2 + 31)/32, 1);
 
@@ -103,20 +102,20 @@ int main(int argc, char* argv[]) {
     int len_host = size + 2;
     for (int i = 0; i < size + 2; i++)
     {
-        A[i * len_host] = 10 + add_grad_host * i;
-        A[i] = 10 + add_grad_host * i;
-        A[len_host * (size + 1) + i] = 20 + add_grad_host * i;
-        A[len_host * i + size + 1] = 20 + add_grad_host * i;
+        arr_pred[i * len_host] = 10 + add_grad_host * i;
+        arr_pred[i] = 10 + add_grad_host * i;
+        arr_pred[len_host * (size + 1) + i] = 20 + add_grad_host * i;
+        arr_pred[len_host * i + size + 1] = 20 + add_grad_host * i;
 
-        Anew[len_host * i] = A[i * len_host];
-        Anew[i] = A[i];
-        Anew[len_host * (size + 1) + i] = A[len_host * (size + 1) + i];
-        Anew[len_host * i + size + 1] = A[len_host * i + size + 1];
+        arr_new[len_host * i] = arr_pred[i * len_host];
+        arr_new[i] = arr_pred[i];
+        arr_new[len_host * (size + 1) + i] = arr_pred[len_host * (size + 1) + i];
+        arr_new[len_host * i + size + 1] = arr_pred[len_host * i + size + 1];
     }
 
 
-    cudaMemcpy( d_A, A, sizeof(double)*(size + 2) * (size + 2), cudaMemcpyHostToDevice);
-    cudaMemcpy( d_Anew, Anew, sizeof(double)*(size + 2) * (size + 2), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_A, arr_pred, sizeof(double) * (size + 2) * (size + 2), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_Anew, arr_new, sizeof(double) * (size + 2) * (size + 2), cudaMemcpyHostToDevice);
 
     double* d_err_1d;
     cudaMalloc(&d_err_1d, sizeof(double) * (size * size));
