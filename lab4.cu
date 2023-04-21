@@ -36,18 +36,20 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
 }
 
 __global__ void reduceError(double* tol1, double* tolbl, int N){
-    int thread_id = threadIdx.x;
-    int global_size = blockDim.x * gridDim.x;
-    int global_id = blockDim.x * blockIdx.x + threadIdx.x;
+    int thread_id = threadIdx.x; // индекс текущего потока внутри блока
+    int global_size = blockDim.x * gridDim.x;  //вычисляет общее количество потоков на сетке ( путем умножения количества
+    // потоков в блоке (blockDim.x) на количество блоков в сетке (gridDim.x))
+    int global_id = blockDim.x * blockIdx.x + threadIdx.x; //вычисляет глобальный индекс текущего потока (включает в
+    // себя индекс блока и индекс потока внутри блока)
     double tol = tol1[0];
     int i  = global_id;
     while(i < N){
         tol = max(tol, tol1[i]);
         i += global_size;
     }
-    extern __shared__ double shared_array[];
-    shared_array[thread_id] = tol;
-    __syncthreads();
+    extern __shared__ double shared_array[]; //объявляется внешняя область памяти
+    shared_array[thread_id] = tol; // значение tol сохраняется в общей памяти
+    __syncthreads(); //выполняется синхронизация потоков, чтобы убедиться, что все потоки закончили запись в общую память
     int size = blockDim.x / 2;
     while (size > 0){
         if (size > thread_id)
@@ -55,8 +57,9 @@ __global__ void reduceError(double* tol1, double* tolbl, int N){
         __syncthreads();
         size /= 2;
     }
+
     if (thread_id == 0)
-        tolbl[blockIdx.x] = shared_array[0];
+        tolbl[blockIdx.x] = shared_array[0]; // значение максимальной ошибки сохраняется только в одном потоке с индексом 0 внутри блока
 }
 
 
@@ -87,9 +90,12 @@ int main(int argc, char* argv[]) {
 
     double *arr_pred = (double*)malloc((size + 2) * (size + 2) * sizeof(double));
     double *arr_new = (double*)malloc((size + 2) * (size + 2) * sizeof(double));
+
+    int size_pot=32;
+
     
-    dim3 BS(32, 32, 1);
-    dim3 GS((size + 2 + 31)/32, (size + 2 + 31)/32, 1);
+    dim3 Block_size(size_pot, size_pot, 1); //
+    dim3 GS((size + 33)/size_pot, (size + 33)/size_pot, 1);
 
 
     double* d_A, *d_Anew;
@@ -100,8 +106,7 @@ int main(int argc, char* argv[]) {
     double add_grad_host = 10.0 / (size + 2);
 
     int len_host = size + 2;
-    for (int i = 0; i < size + 2; i++)
-    {
+    for (int i = 0; i < size + 2; i++){
         arr_pred[i * len_host] = 10 + add_grad_host * i;
         arr_pred[i] = 10 + add_grad_host * i;
         arr_pred[len_host * (size + 1) + i] = 20 + add_grad_host * i;
@@ -134,13 +139,13 @@ int main(int argc, char* argv[]) {
         iter_host++;
         if ((iter_host % 150 == 0) || (iter_host == 1)){
             error_host = 0.0;
-            updateError<<<GS, BS>>>(d_A, d_Anew, size, error_host, d_err_1d);
+            updateError<<<GS, Block_size>>>(d_A, d_Anew, size, error_host, d_err_1d);
             reduceError<<<errGS, errBS, (errBS.x) * sizeof(double)>>>(d_err_1d, dev_out, size * size);
             reduceError<<<1, errBS, (errBS.x) * sizeof(double)>>>(dev_out, d_err_1d, errGS.x);
             cudaMemcpy(&error_host, &d_err_1d[0], sizeof(double), cudaMemcpyDeviceToHost);
         }
         else
-            updateTemperature<<<GS, BS>>>(d_A, d_Anew, size);
+            updateTemperature<<<GS, Block_size>>>(d_A, d_Anew, size);
         d_ptr = d_A;
         d_A = d_Anew;
         d_Anew = d_ptr;
