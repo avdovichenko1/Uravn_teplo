@@ -119,14 +119,14 @@ int main(int argc, char* argv[]) {
         arr_new[len_host * i + size + 1] = arr_pred[len_host * i + size + 1];
     }
 
-
+    double* mas_error;
+    cudaMalloc(&mas_error, sizeof(double) * (size * size)); // выделение памяти для GPU
+    // копирование данных из хоста на устройство
     cudaMemcpy(arr_pred_gp, arr_pred, sizeof(double) * (size + 2) * (size + 2), cudaMemcpyHostToDevice);
     cudaMemcpy(arr_new_gp, arr_new, sizeof(double) * (size + 2) * (size + 2), cudaMemcpyHostToDevice);
 
-    double* d_err_1d;
-    cudaMalloc(&d_err_1d, sizeof(double) * (size * size));
 
-    dim3 errBS(1024,1,1);
+    dim3 Error_block(1024,1,1);
     dim3 errGS(ceil((size * size)/(float)errBS.x), 1, 1);
     double* dev_out;
     cudaMalloc(&dev_out, sizeof(double) * errGS.x);
@@ -140,10 +140,10 @@ int main(int argc, char* argv[]) {
         num_iter++;
         if ((num_iter % 150 == 0) || (num_iter == 1)){
             error = 0.0;
-            updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, d_err_1d);
-            reduceError<<<errGS, errBS, (errBS.x) * sizeof(double)>>>(d_err_1d, dev_out, size * size);
-            reduceError<<<1, errBS, (errBS.x) * sizeof(double)>>>(dev_out, d_err_1d, errGS.x);
-            cudaMemcpy(&error, &d_err_1d[0], sizeof(double), cudaMemcpyDeviceToHost);
+            updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, mas_error);
+            reduceError<<<errGS, Error_block, (Error_block.x) * sizeof(double)>>>(mas_error, dev_out, size * size);
+            reduceError<<<1, Error_block, (Error_block.x) * sizeof(double)>>>(dev_out, mas_error, errGS.x);
+            cudaMemcpy(&error, &mas_error[0], sizeof(double), cudaMemcpyDeviceToHost);
         }
         else
             updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size);
