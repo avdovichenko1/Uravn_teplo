@@ -127,9 +127,9 @@ int main(int argc, char* argv[]) {
 
 
     dim3 Error_block(1024,1,1);
-    dim3 errGS(ceil((size * size)/(float)Error_block.x), 1, 1);
+    dim3 Error_grid(ceil((size * size)/(float)Error_block.x), 1, 1);
     double* dev_out;
-    cudaMalloc(&dev_out, sizeof(double) * errGS.x);
+    cudaMalloc(&dev_out, sizeof(double) * Error_grid.x);
 
 
     double* d_ptr;
@@ -141,8 +141,8 @@ int main(int argc, char* argv[]) {
         if ((num_iter % 150 == 0) || (num_iter == 1)){
             error = 0.0;
             updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, mas_error);
-            reduceError<<<errGS, Error_block, (Error_block.x) * sizeof(double)>>>(mas_error, dev_out, size * size);
-            reduceError<<<1, Error_block, (Error_block.x) * sizeof(double)>>>(dev_out, mas_error, errGS.x);
+            reduceError<<<Error_grid, Error_block, (Error_block.x) * sizeof(double)>>>(mas_error, dev_out, size * size);
+            reduceError<<<1, Error_block, (Error_block.x) * sizeof(double)>>>(dev_out, mas_error, Error_grid.x);
             cudaMemcpy(&error, &mas_error[0], sizeof(double), cudaMemcpyDeviceToHost);
         }
         else
