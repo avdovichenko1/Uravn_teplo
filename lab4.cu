@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <malloc.h>
 #include <time.h>
-#include <cub/cub.cuh> // Включение заголовочного файла CUB
 
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
@@ -95,7 +94,6 @@ int main(int argc, char* argv[]) {
     int num_iter = 0;
     double error = 1.0;
     double shag = 10.0 / (size + 2);
-    int sum=0;
 
     int size_pot=32; // количество потоков
     dim3 Block_size(size_pot, size_pot, 1); //размер блока и определение количества потоков в каждом блоке, 1 блок - 1024 потока
@@ -146,8 +144,6 @@ int main(int argc, char* argv[]) {
             updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, mas_error); // ядро обновляет значения массивов arr_pred_gp и arr_new_gp
             reduceError<<<Error_grid, Error_block, (Error_block.x) * sizeof(double)>>>(mas_error, itog, size * size);
             reduceError<<<1, Error_block, (Error_block.x) * sizeof(double)>>>(itog, mas_error, Error_grid.x);
-            cub::DeviceReduce::Sum(nullptr, sum, d_in, N);
-            printf("%d\n", sum);
             cudaMemcpy(&error, &mas_error[0], sizeof(double), cudaMemcpyDeviceToHost);
 
             d_ptr = arr_pred_gp;
