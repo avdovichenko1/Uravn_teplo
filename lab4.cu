@@ -139,6 +139,7 @@ int main(int argc, char* argv[]) {
 
     while ((error > tol) && (num_iter < iter_max)){
         num_iter++;
+        if ((num_iter % 100 == 0) || (num_iter == 1)){
             error = 0.0;
             updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, mas_error); // ядро обновляет значения массивов arr_pred_gp и arr_new_gp
             reduceError<<<Error_grid, Error_block, (Error_block.x) * sizeof(double)>>>(mas_error, itog, size * size);
@@ -151,7 +152,13 @@ int main(int argc, char* argv[]) {
 
             printf("%d : %lf\n", num_iter, error);
             fflush(stdout); //  проверить, что все данные, которые были записаны в буфер вывода с помощью функции printf(), записались
-       
+        }
+        else {
+            updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size);
+            d_ptr = arr_pred_gp;
+            arr_pred_gp = arr_new_gp;
+            arr_new_gp = d_ptr;
+        }
     }
     printf("Финальные результаты: %d, %0.6lf\n", num_iter, error);
     clock_t b=clock();
