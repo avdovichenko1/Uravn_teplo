@@ -98,7 +98,6 @@ int main(int argc, char *argv[]) {
             }
 //копирует один элемент массива arr_new с индексом max_id-1 с устройства на хост
 #pragma acc update self(arr_new[max_id-1:1])
-#pragma acc update self(arr_new[max_id-1:1])
             
             error = fabs(arr_new[max_id - 1]);
 #pragma acc host_data use_device(arr_pred, arr_new)
