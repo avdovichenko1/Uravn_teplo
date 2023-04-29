@@ -1,9 +1,7 @@
-
 #include <cstdlib>
 #include <cstdio>
 #include <malloc.h>
 #include <time.h>
-#include <cub/cub.cuh>
 
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
@@ -37,24 +35,31 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
         };
 }
 
-__global__ void reduceError(double* tol1, double* tolbl, int N) {
-
-    int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-    int global_size = blockDim.x * gridDim.x;
+__global__ void reduceError(double* tol1, double* tolbl, int N){
+    int thread_id = threadIdx.x; // индекс текущего потока внутри блока
+    int global_size = blockDim.x * gridDim.x;  //вычисляет общее количество потоков на сетке ( путем умножения количества
+    // потоков в блоке (blockDim.x) на количество блоков в сетке (gridDim.x))
+    int global_id = blockDim.x * blockIdx.x + threadIdx.x; //вычисляет глобальный индекс текущего потока (включает в
+    // себя индекс блока и индекс потока внутри блока)
     double tol = tol1[0];
-    int i = thread_id;
-    while (i < N) {
+    int i  = global_id;
+    while(i < N){
         tol = max(tol, tol1[i]);
         i += global_size;
     }
-
-    __shared__ double shared_array[32];
-    cub::BlockReduce<double, 32>(shared_array).Reduce(tol, max, N);
-    __syncthreads();
-
-    if (threadIdx.x == 0) {
-        tolbl[blockIdx.x] = tol;
+    extern __shared__ double shared_array[]; //объявляется внешняя область памяти
+    shared_array[thread_id] = tol;
+    __syncthreads(); //выполняется синхронизация потоков, чтобы убедиться, что все потоки закончили запись в общую память
+    int size = blockDim.x / 2;
+    while (size > 0){
+        if (size > thread_id)
+            shared_array[thread_id] = max(shared_array[thread_id + size], shared_array[thread_id]);
+        __syncthreads();
+        size /= 2;
     }
+
+    if (thread_id == 0)
+        tolbl[blockIdx.x] = shared_array[0]; // значение максимальной ошибки сохраняется только в одном потоке с индексом 0 внутри блока
 }
 
 
@@ -131,41 +136,28 @@ int main(int argc, char* argv[]) {
     cudaMalloc(&itog, sizeof(double) * Error_grid.x);
 
     cudaDeviceSynchronize(); // для синхронизации выполнения всех операций на устройстве CUDA
-    
-    cub::CachingDeviceAllocator allocator;
-    double* tol1_gp; 
-    cudaMalloc((void**)&tol1_gp, sizeof(double) * (size + 2) * (size + 2));
-    double* tolbl_gp; 
-    cudaMalloc((void**)&tolbl_gp, sizeof(double) * Grid_Size.x);
 
     while ((error > tol) && (num_iter < iter_max)){
         num_iter++;
-        updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, N);
-        updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, N, tol, tol1_gp);
-
-        size_t temp_storage_bytes = 0;
-        void* temp_storage = nullptr;
-        cub::DeviceReduce::Reduce(temp_storage, temp_storage_bytes, tol1_gp, tol1_gp + N, tolbl_gp, N, max, allocator);
-        cudaMalloc(&temp_storage, temp_storage_bytes);
-        cub::DeviceReduce::Reduce(temp_storage, temp_storage_bytes, tol1_gp, tol1_gp + N, tolbl_gp, N, max, allocator);
-        cudaFree(temp_storage);
-        cudaMemcpy(&error, tolbl_gp, sizeof(double), cudaMemcpyDeviceToHost);
-
-        cudaMemcpy(arr_pred_gp, arr_new_gp, sizeof(double) * len_host * len_host, cudaMemcpyDeviceToDevice);
-
         if ((num_iter % 100 == 0) || (num_iter == 1)){
-        //    error = 0.0;
-          //  updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, mas_error); // ядро обновляет значения массивов arr_pred_gp и arr_new_gp
-            //reduceError<<<Error_grid, Error_block, (Error_block.x) * sizeof(double)>>>(mas_error, itog, size * size);
-            //reduceError<<<1, Error_block, (Error_block.x) * sizeof(double)>>>(itog, mas_error, Error_grid.x);
-            //cudaMemcpy(&error, &mas_error[0], sizeof(double), cudaMemcpyDeviceToHost);
+            error = 0.0;
+            updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, mas_error); // ядро обновляет значения массивов arr_pred_gp и arr_new_gp
+            reduceError<<<Error_grid, Error_block, (Error_block.x) * sizeof(double)>>>(mas_error, itog, size * size);
+            reduceError<<<1, Error_block, (Error_block.x) * sizeof(double)>>>(itog, mas_error, Error_grid.x);
+            cudaMemcpy(&error, &mas_error[0], sizeof(double), cudaMemcpyDeviceToHost);
 
-           // d_ptr = arr_pred_gp;
-            //arr_pred_gp = arr_new_gp;
-            //arr_new_gp = d_ptr;
+            d_ptr = arr_pred_gp;
+            arr_pred_gp = arr_new_gp;
+            arr_new_gp = d_ptr;
 
-           printf("%d : %lf\n", num_iter, error);
+            printf("%d : %lf\n", num_iter, error);
             fflush(stdout); //  проверить, что все данные, которые были записаны в буфер вывода с помощью функции printf(), записались
+        }
+        else {
+            updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size);
+            d_ptr = arr_pred_gp;
+            arr_pred_gp = arr_new_gp;
+            arr_new_gp = d_ptr;
         }
     }
     printf("Финальные результаты: %d, %0.6lf\n", num_iter, error);
