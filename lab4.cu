@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <malloc.h>
 #include <time.h>
+#include <cub/cub.cuh>  // подключаем библиотеку CUB
 
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
@@ -30,9 +31,26 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
     if (j > 0 && j < N + 1)
         if (i > 0 && i < N + 1) {
             arr_new[j * (N + 2) + i] = 0.25 * (arr_pred[(j + 1) * (N + 2) + i] + arr_pred[(j - 1) * (N + 2) + i] + arr_pred[j * (N + 2) + i - 1] + arr_pred[j * (N + 2) + i + 1]);
-            //Вычисление значения погрешности между новым значением элемента и соответствующим предыдущим значением элемента
+
             tol1[i * j - 1] = max(arr_new[j * (N + 2) + i] - arr_pred[j * (N + 2) + i], tol);
         };
+    
+    // объявляем необходимые переменные для работы CUB
+    double* temp_storage = NULL;
+    size_t temp_storage_bytes = 0;
+    double result;
+    double* d_result = &result;
+
+    // вычисляем максимальную ошибку с помощью CUB
+    cub::DeviceReduce::Max(temp_storage, temp_storage_bytes, tol1, d_result, N);
+    cudaMalloc(&temp_storage, temp_storage_bytes);
+    cub::DeviceReduce::Max(temp_storage, temp_storage_bytes, tol1, d_result, N);
+
+    // сохраняем значение максимальной ошибки
+    if (threadIdx.x == 0 && threadIdx.y == 0) {
+        tol1[0] = *d_result;
+    }
+    cudaFree(temp_storage);
 }
 
 __global__ void reduceError(double* tol1, double* tolbl, int N){
@@ -150,7 +168,7 @@ int main(int argc, char* argv[]) {
             arr_pred_gp = arr_new_gp;
             arr_new_gp = d_ptr;
 
-            printf("%d : %lf\n", num_iter, error);
+            printf("%d : %0.8lf\n", num_iter, error);
             fflush(stdout); //  проверить, что все данные, которые были записаны в буфер вывода с помощью функции printf(), записались
         }
         else {
