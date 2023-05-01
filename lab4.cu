@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <malloc.h>
 #include <time.h>
-#include <cub/cub.cuh>
 
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
@@ -36,7 +35,6 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
         };
 }
 
-
 __global__ void reduceError(double* tol1, double* tolbl, int N){
     int thread_id = threadIdx.x; // индекс текущего потока внутри блока
     int global_size = blockDim.x * gridDim.x;  //вычисляет общее количество потоков на сетке ( путем умножения количества
@@ -52,14 +50,16 @@ __global__ void reduceError(double* tol1, double* tolbl, int N){
     extern __shared__ double shared_array[]; //объявляется внешняя область памяти
     shared_array[thread_id] = tol;
     __syncthreads(); //выполняется синхронизация потоков, чтобы убедиться, что все потоки закончили запись в общую память
-
-    cub::BlockReduce<double, blockDim.x> block_reduce;
-    double block_max;
-    block_reduce.Max(shared_array, block_max);
-    __syncthreads(); //выполняется синхронизация потоков
+    int size = blockDim.x / 2;
+    while (size > 0){
+        if (size > thread_id)
+            shared_array[thread_id] = max(shared_array[thread_id + size], shared_array[thread_id]);
+        __syncthreads();
+        size /= 2;
+    }
 
     if (thread_id == 0)
-        tolbl[blockIdx.x] = block_max; // значение максимальной ошибки сохраняется только в одном потоке с индексом 0 внутри блока
+        tolbl[blockIdx.x] = shared_array[0]; // значение максимальной ошибки сохраняется только в одном потоке с индексом 0 внутри блока
 }
 
 
