@@ -23,35 +23,36 @@ __global__ void updateTemperature(const double* arr_pred, double* arr_new, int N
                                                arr_pred[j * (N + 2) + i - 1] + arr_pred[j * (N + 2) + i + 1]);
 }
 
-__global__ void updateError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
 
+__global__ void updateError(double* d_error, double* d_diff, const int N)
+{
+    __shared__ double sdata[256];
+
+    int tid = threadIdx.x;
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (j > 0 && j < N + 1)
-        if (i > 0 && i < N + 1) {
-            arr_new[j * (N + 2) + i] = 0.25 * (arr_pred[(j + 1) * (N + 2) + i] + arr_pred[(j - 1) * (N + 2) + i] + arr_pred[j * (N + 2) + i - 1] + arr_pred[j * (N + 2) + i + 1]);
-
-            tol1[i * j - 1] = max(arr_new[j * (N + 2) + i] - arr_pred[j * (N + 2) + i], tol);
-        };
-    
-    // объявляем необходимые переменные для работы CUB
-    double* temp_storage = NULL;
-    size_t temp_storage_bytes = 0;
-    double result;
-    double* d_result = &result;
-
-    // вычисляем максимальную ошибку с помощью CUB
-    cub::DeviceReduce::Max(temp_storage, temp_storage_bytes, tol1, d_result, N);
-    cudaMalloc(&temp_storage, temp_storage_bytes);
-    cub::DeviceReduce::Max(temp_storage, temp_storage_bytes, tol1, d_result, N);
-
-    // сохраняем значение максимальной ошибки
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        tol1[0] = *d_result;
+    if(i < N)
+    {
+        sdata[tid] = d_diff[i];
     }
-    cudaFree(temp_storage);
+    else
+    {
+        sdata[tid] = 0;
+    }
+    __syncthreads();
+
+    // Reduce within the block
+    double block_max = -1e20;
+    cub::BlockReduce<double, BLOCK_SIZE>(sdata, block_max);
+    __syncthreads();
+
+    // Reduce across blocks
+    if(tid == 0)
+    {
+        d_error[blockIdx.x] = -block_max;
+    }
 }
+
 
 __global__ void reduceError(double* tol1, double* tolbl, int N){
     int thread_id = threadIdx.x; // индекс текущего потока внутри блока
