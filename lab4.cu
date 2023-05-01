@@ -2,6 +2,10 @@
 #include <cstdio>
 #include <malloc.h>
 #include <time.h>
+#include <cub/cub.cuh>
+#include <cub/block/block_load.cuh>
+#include <cub/block/block_store.cuh>
+#include <cub/block/block_reduce.cuh>
 
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
@@ -35,31 +39,34 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
         };
 }
 
-__global__ void reduceError(double* tol1, double* tolbl, int N){
-    int thread_id = threadIdx.x; // индекс текущего потока внутри блока
-    int global_size = blockDim.x * gridDim.x;  //вычисляет общее количество потоков на сетке ( путем умножения количества
-    // потоков в блоке (blockDim.x) на количество блоков в сетке (gridDim.x))
-    int global_id = blockDim.x * blockIdx.x + threadIdx.x; //вычисляет глобальный индекс текущего потока (включает в
-    // себя индекс блока и индекс потока внутри блока)
-    double tol = tol1[0];
-    int i  = global_id;
-    while(i < N){
-        tol = max(tol, tol1[i]);
-        i += global_size;
-    }
-    extern __shared__ double shared_array[]; //объявляется внешняя область памяти
-    shared_array[thread_id] = tol;
-    __syncthreads(); //выполняется синхронизация потоков, чтобы убедиться, что все потоки закончили запись в общую память
-    int size = blockDim.x / 2;
-    while (size > 0){
-        if (size > thread_id)
-            shared_array[thread_id] = max(shared_array[thread_id + size], shared_array[thread_id]);
-        __syncthreads();
-        size /= 2;
-    }
+__global__ void updateError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
 
-    if (thread_id == 0)
-        tolbl[blockIdx.x] = shared_array[0]; // значение максимальной ошибки сохраняется только в одном потоке с индексом 0 внутри блока
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (j > 0 && j < N + 1)
+        if (i > 0 && i < N + 1) {
+            arr_new[j * (N + 2) + i] = 0.25 * (arr_pred[(j + 1) * (N + 2) + i] + arr_pred[(j - 1) * (N + 2) + i] + arr_pred[j * (N + 2) + i - 1] + arr_pred[j * (N + 2) + i + 1]);
+
+            tol1[i * j - 1] = max(arr_new[j * (N + 2) + i] - arr_pred[j * (N + 2) + i], tol);
+        };
+    
+    // объявляем необходимые переменные для работы CUB
+    double* temp_storage = NULL;
+    size_t temp_storage_bytes = 0;
+    double result;
+    double* d_result = &result;
+
+    // вычисляем максимальную ошибку с помощью CUB
+    cub::DeviceReduce::Max(temp_storage, temp_storage_bytes, tol1, d_result, N);
+    cudaMalloc(&temp_storage, temp_storage_bytes);
+    cub::DeviceReduce::Max(temp_storage, temp_storage_bytes, tol1, d_result, N);
+
+    // сохраняем значение максимальной ошибки
+    if (threadIdx.x == 0 && threadIdx.y == 0) {
+        tol1[0] = *d_result;
+    }
+    cudaFree(temp_storage);
 }
 
 
