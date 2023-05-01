@@ -164,7 +164,6 @@ int main(int argc, char* argv[]) {
             arr_pred_gp = arr_new_gp;
             arr_new_gp = d_ptr;
         }
-        updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size);
     }
     printf("Финальные результаты: %d, %0.6lf\n", num_iter, error);
     clock_t b=clock();
