@@ -39,34 +39,25 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
         };
 }
 
-__global__ void updateError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
+__global__ void reduceError(double* tol1, double* tolbl, int N){
+    int thread_id = threadIdx.x; // индекс текущего потока внутри блока
+    int global_size = blockDim.x * gridDim.x;  //вычисляет общее количество потоков на сетке ( путем умножения количества
+    // потоков в блоке (blockDim.x) на количество блоков в сетке (gridDim.x))
+    int global_id = blockDim.x * blockIdx.x + threadIdx.x; //вычисляет глобальный индекс текущего потока (включает в
+    // Создаем и инициализируем объекты CUB
+    cub::Max max_op;
+    double tol = tol1[global_id];
+    cub::KeyValuePair<int, double> result;
+    cub::BlockReduce<cub::KeyValuePair<int, double>, 1024> block_reduce;
+    __shared__ typename cub::BlockReduce<cub::KeyValuePair<int, double>, 1024>::TempStorage temp_storage;
 
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
+    // Выполняем операцию сокращения на уровне блока
+    block_reduce.Reduce(tol, result, N, max_op, temp_storage);
 
-    if (j > 0 && j < N + 1)
-        if (i > 0 && i < N + 1) {
-            arr_new[j * (N + 2) + i] = 0.25 * (arr_pred[(j + 1) * (N + 2) + i] + arr_pred[(j - 1) * (N + 2) + i] + arr_pred[j * (N + 2) + i - 1] + arr_pred[j * (N + 2) + i + 1]);
-
-            tol1[i * j - 1] = max(arr_new[j * (N + 2) + i] - arr_pred[j * (N + 2) + i], tol);
-        };
-    
-    // объявляем необходимые переменные для работы CUB
-    double* temp_storage = NULL;
-    size_t temp_storage_bytes = 0;
-    double result;
-    double* d_result = &result;
-
-    // вычисляем максимальную ошибку с помощью CUB
-    cub::DeviceReduce::Max(temp_storage, temp_storage_bytes, tol1, d_result, N);
-    cudaMalloc(&temp_storage, temp_storage_bytes);
-    cub::DeviceReduce::Max(temp_storage, temp_storage_bytes, tol1, d_result, N);
-
-    // сохраняем значение максимальной ошибки
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        tol1[0] = *d_result;
+    // Поток с индексом 0 сохраняет результат в глобальной памяти
+    if (threadIdx.x == 0) {
+        tolbl[blockIdx.x] = result.value;
     }
-    cudaFree(temp_storage);
 }
 
 
