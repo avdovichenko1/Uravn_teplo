@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <malloc.h>
 #include <time.h>
-#include <cub/cub.cuh>  // подключаем библиотеку CUB
 
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
@@ -23,36 +22,18 @@ __global__ void updateTemperature(const double* arr_pred, double* arr_new, int N
                                                arr_pred[j * (N + 2) + i - 1] + arr_pred[j * (N + 2) + i + 1]);
 }
 
+__global__ void updateError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
 
-__global__ void updateError(double* d_error, double* d_diff, const int N)
-{
-    __shared__ double sdata[256];
-
-    int tid = threadIdx.x;
     int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if(i < N)
-    {
-        sdata[tid] = d_diff[i];
-    }
-    else
-    {
-        sdata[tid] = 0;
-    }
-    __syncthreads();
-
-    // Reduce within the block
-    double block_max = -1e20;
-    cub::BlockReduce<double, BLOCK_SIZE>(sdata, block_max);
-    __syncthreads();
-
-    // Reduce across blocks
-    if(tid == 0)
-    {
-        d_error[blockIdx.x] = -block_max;
-    }
+    if (j > 0 && j < N + 1)
+        if (i > 0 && i < N + 1) {
+            arr_new[j * (N + 2) + i] = 0.25 * (arr_pred[(j + 1) * (N + 2) + i] + arr_pred[(j - 1) * (N + 2) + i] + arr_pred[j * (N + 2) + i - 1] + arr_pred[j * (N + 2) + i + 1]);
+            //Вычисление значения погрешности между новым значением элемента и соответствующим предыдущим значением элемента
+            tol1[i * j - 1] = max(arr_new[j * (N + 2) + i] - arr_pred[j * (N + 2) + i], tol);
+        };
 }
-
 
 __global__ void reduceError(double* tol1, double* tolbl, int N){
     int thread_id = threadIdx.x; // индекс текущего потока внутри блока
@@ -169,7 +150,7 @@ int main(int argc, char* argv[]) {
             arr_pred_gp = arr_new_gp;
             arr_new_gp = d_ptr;
 
-            printf("%d : %0.8lf\n", num_iter, error);
+            printf("%d : %lf\n", num_iter, error);
             fflush(stdout); //  проверить, что все данные, которые были записаны в буфер вывода с помощью функции printf(), записались
         }
         else {
