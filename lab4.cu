@@ -46,14 +46,11 @@ __global__ void reduceError(double* tol1, double* tolbl, int N){
     // потоков в блоке (blockDim.x) на количество блоков в сетке (gridDim.x))
     int global_id = blockDim.x * blockIdx.x + threadIdx.x; //вычисляет глобальный индекс текущего потока (включает в
     // себя индекс блока и индекс потока внутри блока)
-    double tol = tol1[0];
-    int i  = global_id;
-    while(i < N){
-        tol = max(tol, tol1[i]);
-        i += global_size;
-    }
+
+    cub::DeviceReduce::Max(tol1, tolbl, N);
+
     extern __shared__ double shared_array[]; //объявляется внешняя область памяти
-    shared_array[thread_id] = tol;
+    shared_array[thread_id] = tolbl[blockIdx.x];
     __syncthreads(); //выполняется синхронизация потоков, чтобы убедиться, что все потоки закончили запись в общую память
     int size = blockDim.x / 2;
     while (size > 0){
