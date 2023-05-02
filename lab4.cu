@@ -41,27 +41,9 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
 
 
 __global__ void reduceError(double* tol1, double* tolbl, int N){
-    int thread_id = threadIdx.x; // индекс текущего потока внутри блока
-    int global_size = blockDim.x * gridDim.x;  //вычисляет общее количество потоков на сетке ( путем умножения количества
-    // потоков в блоке (blockDim.x) на количество блоков в сетке (gridDim.x))
-    int global_id = blockDim.x * blockIdx.x + threadIdx.x; //вычисляет глобальный индекс текущего потока (включает в
-    // себя индекс блока и индекс потока внутри блока)
-
-    cub::DeviceReduce::Max(tol1, tolbl, N);
-
-    extern __shared__ double shared_array[]; //объявляется внешняя область памяти
-    shared_array[thread_id] = tolbl[blockIdx.x];
-    __syncthreads(); //выполняется синхронизация потоков, чтобы убедиться, что все потоки закончили запись в общую память
-    int size = blockDim.x / 2;
-    while (size > 0){
-        if (size > thread_id)
-            shared_array[thread_id] = max(shared_array[thread_id + size], shared_array[thread_id]);
-        __syncthreads();
-        size /= 2;
-    }
-
-    if (thread_id == 0)
-        tolbl[blockIdx.x] = shared_array[0]; // значение максимальной ошибки сохраняется только в одном потоке с индексом 0 внутри блока
+    cub::CachingDeviceAllocator allocator;
+    double tol = cub::DeviceReduce::Max(nullptr, tol1, N);
+    tolbl[blockIdx.x] = tol;
 }
 
 
