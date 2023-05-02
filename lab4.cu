@@ -40,26 +40,33 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
 }
 
 __global__ void reduceError(double* tol1, double* tolbl, int N){
-    int thread_id = threadIdx.x;
-    int global_size = blockDim.x * gridDim.x;
-    int global_id = blockDim.x * blockIdx.x + threadIdx.x;
-    
+    int thread_id = threadIdx.x; // индекс текущего потока внутри блока
+    int global_size = blockDim.x * gridDim.x;  //вычисляет общее количество потоков на сетке ( путем умножения количества
+    // потоков в блоке (blockDim.x) на количество блоков в сетке (gridDim.x))
+    int global_id = blockDim.x * blockIdx.x + threadIdx.x; //вычисляет глобальный индекс текущего потока (включает в
+    // себя индекс блока и индекс потока внутри блока)
     double tol = tol1[0];
-    int i = global_id;
-    while (i < N){
+    int i  = global_id;
+    while(i < N){
         tol = max(tol, tol1[i]);
         i += global_size;
     }
-    
-    // Используем cub::DeviceReduce::Max() для вычисления максимального значения в массиве
-    typedef cub::BlockReduce<double, blockDim.x> BlockReduce;
-    __shared__ typename BlockReduce::TempStorage temp_storage;
-    double block_max;
-    BlockReduce(temp_storage).Reduce(tol, block_max); // вычисляем максимальное значение на уровне блока
-    
+    extern __shared__ double shared_array[]; //объявляется внешняя область памяти
+    shared_array[thread_id] = tol;
+    __syncthreads(); //выполняется синхронизация потоков, чтобы убедиться, что все потоки закончили запись в общую память
+    int size = blockDim.x / 2;
+    while (size > 0){
+        if (size > thread_id)
+            shared_array[thread_id] = max(shared_array[thread_id + size], shared_array[thread_id]);
+        __syncthreads();
+        size /= 2;
+    }
+
     if (thread_id == 0)
-        tolbl[blockIdx.x] = block_max; // сохраняем максимальное значение только в одном потоке с индексом 0 внутри блока
+        tolbl[blockIdx.x] = shared_array[0]; // значение максимальной ошибки сохраняется только в одном потоке с индексом 0 внутри блока
 }
+
+
 
 
 int main(int argc, char* argv[]) {
