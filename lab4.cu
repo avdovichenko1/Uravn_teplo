@@ -2,10 +2,8 @@
 #include <cstdio>
 #include <malloc.h>
 #include <time.h>
-#include <cub/cub.cuh>
-#include <cub/block/block_reduce.cuh>
 
-#include "cuda_runtime.h"
+#define max(x, y) ((x) > (y) ? (x) : (y))
 
 
 __global__ void updateTemperature(const double* arr_pred, double* arr_new, int N){
@@ -38,17 +36,30 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
 }
 
 __global__ void reduceError(double* tol1, double* tolbl, int N){
-    typedef cub::BlockReduce<double, 32> BlockReduce;
-    __shared__ typename BlockReduce::TempStorage shared_array; //temp_storage
-    double max_diff = 0;
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    double diff = fabs(tol1[i] - tol1[i]);
-    max_diff = fmax(diff, max_diff);
+    int thread_id = threadIdx.x; // индекс текущего потока внутри блока
+    int global_size = blockDim.x * gridDim.x;  //вычисляет общее количество потоков на сетке ( путем умножения количества
+    // потоков в блоке (blockDim.x) на количество блоков в сетке (gridDim.x))
+    int global_id = blockDim.x * blockIdx.x + threadIdx.x; //вычисляет глобальный индекс текущего потока (включает в
+    // себя индекс блока и индекс потока внутри блока)
+    double tol = tol1[0];
+    int i  = global_id;
+    while(i < N){
+        tol = max(tol, tol1[i]);
+        i += global_size;
+    }
+    extern __shared__ double shared_array[]; //объявляется внешняя область памяти
+    shared_array[thread_id] = tol;
+    __syncthreads(); //выполняется синхронизация потоков, чтобы убедиться, что все потоки закончили запись в общую память
+    int size = blockDim.x / 2;
+    while (size > 0){
+        if (size > thread_id)
+            shared_array[thread_id] = max(shared_array[thread_id + size], shared_array[thread_id]);
+        __syncthreads();
+        size /= 2;
+    }
 
-    double block_max_diff = BlockReduce(shared_array).Reduce(max_diff, cub::Max());
-
-    if (threadIdx.x == 0)
-        tolbl[blockIdx.x] = block_max_diff; // значение максимальной ошибки сохраняется только в одном потоке с индексом 0 внутри блока
+    if (thread_id == 0)
+        tolbl[blockIdx.x] = shared_array[0]; // значение максимальной ошибки сохраняется только в одном потоке с индексом 0 внутри блока
 }
 
 
@@ -84,7 +95,7 @@ int main(int argc, char* argv[]) {
     double error = 1.0;
     double shag = 10.0 / (size + 2);
 
-    int num_blocks_reduce = (size*size + 31) / 32;
+    int num_blocks_reduce = (size*size + THREADS_PER_BLOCK_REDUCE - 1) / THREADS_PER_BLOCK_REDUCE;
 
 
     int size_pot=32; // количество потоков
