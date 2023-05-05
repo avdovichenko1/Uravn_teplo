@@ -39,34 +39,6 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
         };
 }
 
-__global__ void reduceError(double* tol1, double* tolbl, int N){
-    int thread_id = threadIdx.x; // индекс текущего потока внутри блока
-    int global_size = blockDim.x * gridDim.x;  //вычисляет общее количество потоков на сетке ( путем умножения количества
-    // потоков в блоке (blockDim.x) на количество блоков в сетке (gridDim.x))
-    int global_id = blockDim.x * blockIdx.x + threadIdx.x; //вычисляет глобальный индекс текущего потока (включает в
-    // себя индекс блока и индекс потока внутри блока)
-    double tol = tol1[0];
-    int i  = global_id;
-    while(i < N){
-        tol = max(tol, tol1[i]);
-        i += global_size;
-    }
-    extern __shared__ double shared_array[]; //объявляется внешняя область памяти
-    shared_array[thread_id] = tol;
-    __syncthreads(); //выполняется синхронизация потоков, чтобы убедиться, что все потоки закончили запись в общую память
-    int size = blockDim.x / 2;
-    while (size > 0){
-        if (size > thread_id)
-            shared_array[thread_id] = max(shared_array[thread_id + size], shared_array[thread_id]);
-        __syncthreads();
-        size /= 2;
-    }
-
-    if (thread_id == 0)
-        tolbl[blockIdx.x] = shared_array[0]; // значение максимальной ошибки сохраняется только в одном потоке с индексом 0 внутри блока
-}
-
-
 
 
 int main(int argc, char* argv[]) {
@@ -137,7 +109,7 @@ int main(int argc, char* argv[]) {
     cudaMemcpy(arr_pred_gp, arr_pred, sizeof(double) * (size + 2) * (size + 2), cudaMemcpyHostToDevice);
     cudaMemcpy(arr_new_gp, arr_new, sizeof(double) * (size + 2) * (size + 2), cudaMemcpyHostToDevice);
     
-    cub::DeviceReduce::Max(tempStorage, tempStorageBytes, d_ptr, maxError, (size + 2) * (size + 2)); // получение размер временного буфера для редукции
+    cub::DeviceReduce::Max(tempStorage, tempStorageBytes, d_ptr, mas_error, (size + 2) * (size + 2)); // получение размер временного буфера для редукции
     cudaMalloc((void **)&tempStorage, tempStorageBytes); //выделение памяти для буфера
 
 
