@@ -2,6 +2,10 @@
 #include <cstdio>
 #include <malloc.h>
 #include <time.h>
+#include <cub/cub.cuh>
+#include <cub/block/block_load.cuh>
+#include <cub/block/block_store.cuh>
+#include <cub/block/block_reduce.cuh>
 
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
@@ -63,6 +67,8 @@ __global__ void reduceError(double* tol1, double* tolbl, int N){
 }
 
 
+
+
 int main(int argc, char* argv[]) {
     clock_t a=clock();
     int size;
@@ -94,9 +100,6 @@ int main(int argc, char* argv[]) {
     int num_iter = 0;
     double error = 1.0;
     double shag = 10.0 / (size + 2);
-
-    int num_blocks_reduce = (size*size + THREADS_PER_BLOCK_REDUCE - 1) / THREADS_PER_BLOCK_REDUCE;
-
 
     int size_pot=32; // количество потоков
     dim3 Block_size(size_pot, size_pot, 1); //размер блока и определение количества потоков в каждом блоке, 1 блок - 1024 потока
