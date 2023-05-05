@@ -124,6 +124,9 @@ int main(int argc, char* argv[]) {
         arr_new[len_host * (size + 1) + i] = arr_pred[len_host * (size + 1) + i];
         arr_new[len_host * i + size + 1] = arr_pred[len_host * i + size + 1];
     }
+    
+    double *tempStorage = NULL;
+    size_t tempStorageBytes = 0;
 
     double* d_ptr;
     cudaMalloc((void **)(&d_ptr), sizeof(double)); // временное хранение указателя на GPU
@@ -133,10 +136,14 @@ int main(int argc, char* argv[]) {
     // копирование данных из хоста на устройство
     cudaMemcpy(arr_pred_gp, arr_pred, sizeof(double) * (size + 2) * (size + 2), cudaMemcpyHostToDevice);
     cudaMemcpy(arr_new_gp, arr_new, sizeof(double) * (size + 2) * (size + 2), cudaMemcpyHostToDevice);
+    
+    cub::DeviceReduce::Max(tempStorage, tempStorageBytes, d_ptr, maxError, (size + 2) * (size + 2)); // получение размер временного буфера для редукции
+    cudaMalloc((void **)&tempStorage, tempStorageBytes); //выделение памяти для буфера
 
 
     dim3 Error_block(1024,1,1); //  размер блока (block size) для запуска ядра на GPU
     dim3 Error_grid(ceil((size * size)/(float)Error_block.x), 1, 1); // размер сетки для запуска ядра на GPU
+    
 
     double* itog; // указатель на выделенную память на GPU для хранения результата вычислений ядра reduceError
     cudaMalloc(&itog, sizeof(double) * Error_grid.x);
@@ -145,11 +152,13 @@ int main(int argc, char* argv[]) {
 
     while ((error > tol) && (num_iter < iter_max)){
         num_iter++;
+        updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size);
         if ((num_iter % 100 == 0) || (num_iter == 1)){
             error = 0.0;
-            updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, mas_error); // ядро обновляет значения массивов arr_pred_gp и arr_new_gp
-            reduceError<<<Error_grid, Error_block, (Error_block.x) * sizeof(double)>>>(mas_error, itog, size * size);
-            reduceError<<<1, Error_block, (Error_block.x) * sizeof(double)>>>(itog, mas_error, Error_grid.x);
+            updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, d_ptr); // ядро обновляет значения массивов arr_pred_gp и arr_new_gp
+            
+            cub::DeviceReduce::Max(tempStorage, tempStorageBytes, d_ptr, mas_error, (size + 2) * (size + 2)); //// нахождение максимума в разнице матрицы
+           
             cudaMemcpy(&error, &mas_error[0], sizeof(double), cudaMemcpyDeviceToHost);
 
             d_ptr = arr_pred_gp;
@@ -160,9 +169,7 @@ int main(int argc, char* argv[]) {
             fflush(stdout); //  проверить, что все данные, которые были записаны в буфер вывода с помощью функции printf(), записались
         }
         else {
-            updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, mas_error); // ядро обновляет значения массивов arr_pred_gp и arr_new_gp
-            cudaMemcpy(&error, &mas_error[0], sizeof(double), cudaMemcpyDeviceToHost);
-            //updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size);
+            
             d_ptr = arr_pred_gp;
             arr_pred_gp = arr_new_gp;
             arr_new_gp = d_ptr;
