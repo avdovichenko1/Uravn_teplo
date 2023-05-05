@@ -160,7 +160,9 @@ int main(int argc, char* argv[]) {
             fflush(stdout); //  проверить, что все данные, которые были записаны в буфер вывода с помощью функции printf(), записались
         }
         else {
-            updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size);
+            updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, mas_error); // ядро обновляет значения массивов arr_pred_gp и arr_new_gp
+            cudaMemcpy(&error, &mas_error[0], sizeof(double), cudaMemcpyDeviceToHost);
+            //updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size);
             d_ptr = arr_pred_gp;
             arr_pred_gp = arr_new_gp;
             arr_new_gp = d_ptr;
