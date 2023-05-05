@@ -97,7 +97,7 @@ int main(int argc, char* argv[]) {
         arr_new[len_host * i + size + 1] = arr_pred[len_host * i + size + 1];
     }
     
-    double *tempStorage = NULL;
+    double *tempStorage = NULL; // временного хранения буфера для операции редукции на GPU
     size_t tempStorageBytes = 0;
 
     double* d_ptr;
