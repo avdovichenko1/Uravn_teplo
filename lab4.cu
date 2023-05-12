@@ -74,9 +74,9 @@ int main(int argc, char* argv[]) {
     double shag = 10.0 / (size-1);
     
     arr_pred[0] = 10;
-    arr_pred[raz-1] = 20;
-    arr_pred[raz * (raz - 1) +raz - 1] = 30;
-    arr_pred[raz * (raz-1)] = 20;
+    arr_pred[size-1] = 20;
+    arr_pred[size * (size - 1) +size - 1] = 30;
+    arr_pred[size * (size-1)] = 20;
 
     int size_pot=32; // количество потоков
     dim3 Block_size(size_pot, size_pot, 1); //размер блока и определение количества потоков в каждом блоке, 1 блок - 1024 потока
@@ -85,21 +85,21 @@ int main(int argc, char* argv[]) {
     // всю матрицу и иметь достаточное количество блоков для выполнения параллельных вычислений на GPU
 
     double* arr_pred_gp, *arr_new_gp;
-    cudaMalloc((void**)&arr_pred_gp, sizeof(double ) * (size + 2) * (size + 2));
-    cudaMalloc((void**)&arr_new_gp, sizeof(double ) * (size + 2) * (size + 2));
+    cudaMalloc((void**)&arr_pred_gp, sizeof(double ) * (size) * (size));
+    cudaMalloc((void**)&arr_new_gp, sizeof(double ) * (size) * (size));
 
-    int len_host = size + 2;
+    int len_host = size;
 
-    for (int i = 0; i < size + 2; i++){
+    for (int i = 0; i < size-1; i++){
         arr_pred[i * len_host] = 10 + shag * i;
         arr_pred[i] = 10 + shag * i;
-        arr_pred[len_host * (size + 1) + i] = 20 + shag * i;
-        arr_pred[len_host * i + size + 1] = 20 + shag * i;
+        arr_pred[len_host * (size - 1) + i] = 20 + shag * i;
+        arr_pred[len_host * i + size - 1] = 20 + shag * i;
 
         arr_new[len_host * i] = arr_pred[i * len_host];
         arr_new[i] = arr_pred[i];
-        arr_new[len_host * (size + 1) + i] = arr_pred[len_host * (size + 1) + i];
-        arr_new[len_host * i + size + 1] = arr_pred[len_host * i + size + 1];
+        arr_new[len_host * (size - 1) + i] = arr_pred[len_host * (size - 1) + i];
+        arr_new[len_host * i + size - 1] = arr_pred[len_host * i + size - 1];
     }
     
     double *tempStorage = NULL; // временного хранения буфера для операции редукции на GPU
@@ -111,10 +111,10 @@ int main(int argc, char* argv[]) {
     double* mas_error;
     cudaMalloc(&mas_error, sizeof(double) * (size * size)); // выделение памяти для GPU
     // копирование данных из хоста на устройство
-    cudaMemcpy(arr_pred_gp, arr_pred, sizeof(double) * (size + 2) * (size + 2), cudaMemcpyHostToDevice);
-    cudaMemcpy(arr_new_gp, arr_new, sizeof(double) * (size + 2) * (size + 2), cudaMemcpyHostToDevice);
+    cudaMemcpy(arr_pred_gp, arr_pred, sizeof(double) * (size ) * (size), cudaMemcpyHostToDevice);
+    cudaMemcpy(arr_new_gp, arr_new, sizeof(double) * (size) * (size), cudaMemcpyHostToDevice);
     
-    cub::DeviceReduce::Max(tempStorage, tempStorageBytes, d_ptr, mas_error, (size + 2) * (size + 2)); // получение размер временного буфера для редукции
+    cub::DeviceReduce::Max(tempStorage, tempStorageBytes, d_ptr, mas_error, (size) * (size)); // получение размер временного буфера для редукции
     cudaMalloc((void **)&tempStorage, tempStorageBytes); //выделение памяти для буфера
 
 
@@ -134,7 +134,7 @@ int main(int argc, char* argv[]) {
             error = 0.0;
             updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, d_ptr); // ядро обновляет значения массивов arr_pred_gp и arr_new_gp
             
-            cub::DeviceReduce::Max(tempStorage, tempStorageBytes, d_ptr, mas_error, (size + 2) * (size + 2)); //// нахождение максимума в разнице матрицы
+            cub::DeviceReduce::Max(tempStorage, tempStorageBytes, d_ptr, mas_error, (size) * (size)); //// нахождение максимума в разнице матрицы
            
             cudaMemcpy(&error, &mas_error[0], sizeof(double), cudaMemcpyDeviceToHost);
 
