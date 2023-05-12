@@ -18,12 +18,12 @@ __global__ void updateTemperature(const double* arr_pred, double* arr_new, int N
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
 //проверяется, что индексы j и i находятся внутри диапазона от 1 до N + 1, чтобы исключить обработку граничных элементов массива.
-    if (j > 0 && j < N + 1)
-        if (i > 0 && i < N + 1)
+    if (j > 0 && j < N-1)
+        if (i > 0 && i < N -1)
             //новое значение элемента массива arr_new[j * (N + 2) + i] вычисляется на основе предыдущего состояния массива
             // arr_pred,используя формулу теплопроводности
-            arr_new[j * (N + 2) + i] = 0.25 * (arr_pred[(j + 1) * (N + 2) + i] + arr_pred[(j - 1) * (N + 2) + i] +
-                                               arr_pred[j * (N + 2) + i - 1] + arr_pred[j * (N + 2) + i + 1]);
+            arr_new[j * (N) + i] = 0.25 * (arr_pred[(j + 1) * (N) + i] + arr_pred[(j - 1) * (N) + i] +
+                                               arr_pred[j * (N) + i - 1] + arr_pred[j * (N) + i + 1]);
 }
 
 __global__ void updateError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
@@ -31,11 +31,11 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (j > 0 && j < N + 1)
-        if (i > 0 && i < N + 1) {
-            arr_new[j * (N + 2) + i] = 0.25 * (arr_pred[(j + 1) * (N + 2) + i] + arr_pred[(j - 1) * (N + 2) + i] + arr_pred[j * (N + 2) + i - 1] + arr_pred[j * (N + 2) + i + 1]);
+    if (j > 0 && j < N -1)
+        if (i > 0 && i < N - 1) {
+            arr_new[j * (N) + i] = 0.25 * (arr_pred[(j + 1) * (N) + i] + arr_pred[(j - 1) * (N) + i] + arr_pred[j * (N) + i - 1] + arr_pred[j * (N) + i + 1]);
             //Вычисление значения погрешности между новым значением элемента и соответствующим предыдущим значением элемента
-            tol1[i * j - 1] = max(arr_new[j * (N + 2) + i] - arr_pred[j * (N + 2) + i], tol);
+            tol1[i * j - 1] = max(arr_new[j * (N ) + i] - arr_pred[j * (N) + i], tol);
         };
 }
 
