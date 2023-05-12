@@ -66,12 +66,17 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    double *arr_pred = (double*)malloc((size + 2) * (size + 2) * sizeof(double));
-    double *arr_new = (double*)malloc((size + 2) * (size + 2) * sizeof(double));
+    double *arr_pred = (double*)malloc((size) * (size) * sizeof(double));
+    double *arr_new = (double*)malloc((size) * (size) * sizeof(double));
 
     int num_iter = 0;
     double error = 1.0;
-    double shag = 10.0 / (size + 2);
+    double shag = 10.0 / (size-1);
+    
+    arr_pred[0] = 10;
+    arr_pred[raz-1] = 20;
+    arr_pred[raz * (raz - 1) +raz - 1] = 30;
+    arr_pred[raz * (raz-1)] = 20;
 
     int size_pot=32; // количество потоков
     dim3 Block_size(size_pot, size_pot, 1); //размер блока и определение количества потоков в каждом блоке, 1 блок - 1024 потока
