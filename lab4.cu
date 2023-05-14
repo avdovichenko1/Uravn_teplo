@@ -11,23 +11,22 @@
 
 
 __global__ void updateTemperature(const double* arr_pred, double* arr_new, int N){
-    //Индекс j вычисляется как произведение номера блока по вертикальной оси (blockIdx.y) на размер блока по вертикальной оси
-    // (blockDim.y),плюс номер потока внутри блока по вертикальной оси (threadIdx.y), что позволяет потокам различных блоков
-    // и потокам внутри одного блока работать с различными строками массива данных, i - аналогично.
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
-
-//проверяется, что индексы j и i находятся внутри диапазона от 1 до N + 1, чтобы исключить обработку граничных элементов массива.
-    if (j > 0 && j < N-1)
-        if (i > 0 && i < N -1)
-            //новое значение элемента массива arr_new[j * (N + 2) + i] вычисляется на основе предыдущего состояния массива
-            // arr_pred,используя формулу теплопроводности
-            arr_new[j * (N) + i] = 0.25 * (arr_pred[(j + 1) * (N) + i] + arr_pred[(j - 1) * (N) + i] +
-                                               arr_pred[j * (N) + i - 1] + arr_pred[j * (N) + i + 1]);
+    int i = blockIdx.x; // размер строки
+    int j = threadIdx.x; // столбца
+    int k = blockDim.x + 1; // блока
+//проверка находится ли элемент массива внутри границы
+   if (j != 0 && j != k - 1)
+        if (i != 0 && i != k - 1)
+            arr_new[i * k + j] = 0.25 * (arr_pred[i*k+j-1] + arr_pred[(i - 1) * k + j] +
+                                               arr_pred[(i+1)*k+j] + arr_pred[i * k + j + 1]);
 }
 
 __global__ void updateError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
-
+//Индекс j вычисляется как произведение номера блока по вертикальной оси (blockIdx.y) на размер блока по вертикальной оси
+    // (blockDim.y),плюс номер потока внутри блока по вертикальной оси (threadIdx.y), что позволяет потокам различных блоков
+    // и потокам внутри одного блока работать с различными строками массива данных, i - аналогично.
+    
+    
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
