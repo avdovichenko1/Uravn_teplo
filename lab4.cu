@@ -23,13 +23,13 @@ __global__ void updateTemperature(const double* arr_pred, double* arr_new, int N
 }
 
 __global__ void updateError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
-   
+   //локальныt индексs элементов в блоке, в котором выполняется поток
     int i = (blockIdx.x + gridDim.y + blockIdx.y)*blockDim.x+blockDim.y+(threadIdx.x+threadIdx.y*threadIdx.x) / (gridDim.x * blockDim.x);
     int j = (blockIdx.x + gridDim.y + blockIdx.y)*blockDim.x+blockDim.y+(threadIdx.x+threadIdx.y*threadIdx.x) % (gridDim.y * blockDim.y);
-
+// проверяется, что индексы не находятся на границах массива
     if (j != 0 && j != gridDim.x * blockDim.x -1)
         if (i != 0 && i < gridDim.y * blockDim.y - 1)
-            tol1[i * (gridDim.x * blockDim.x) + j] = abs(arr_new[(i*(gridDim.x * blockDim.x) + j]-arr_pred[(i*(gridDim.x * blockDim.x) + j]);
+            tol1[i * (gridDim.x * blockDim.x) + j] = abs(arr_new[(i*(gridDim.x * blockDim.x) + j]-arr_pred[(i*(gridDim.x * blockDim.x) + j]); //вычисление абсолютной разности между элементами массивов
 }
 
 
