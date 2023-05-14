@@ -29,7 +29,7 @@ __global__ void updateError(const double* arr_pred, double* arr_new, int N, doub
 // проверяется, что индексы не находятся на границах массива
     if (j != 0 && j != gridDim.x * blockDim.x -1)
         if (i != 0 && i < gridDim.y * blockDim.y - 1)
-            tol1[i * (gridDim.x * blockDim.x) + j] = abs(arr_new[(i*(gridDim.x * blockDim.x) + j]-arr_pred[(i*(gridDim.x * blockDim.x) + j]); //вычисление абсолютной разности между элементами массивов
+            tol1[i * (gridDim.x * blockDim.x) + j] = abs(arr_new[i*(gridDim.x * blockDim.x) + j]-arr_pred[i*(gridDim.x * blockDim.x) + j]); //вычисление абсолютной разности между элементами массивов
 }
 
 
