@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <malloc.h>
 #include <time.h>
+
 #include <cub/cub.cuh>
 #include <cub/block/block_load.cuh>
 #include <cub/block/block_store.cuh>
@@ -22,20 +23,13 @@ __global__ void updateTemperature(const double* arr_pred, double* arr_new, int N
 }
 
 __global__ void updateError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
-//Индекс j вычисляется как произведение номера блока по вертикальной оси (blockIdx.y) на размер блока по вертикальной оси
-    // (blockDim.y),плюс номер потока внутри блока по вертикальной оси (threadIdx.y), что позволяет потокам различных блоков
-    // и потокам внутри одного блока работать с различными строками массива данных, i - аналогично.
-    
-    
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
+   
+    int i = (blockIdx.x + gridDim.y + blockIdx.y)*blockDim.x+blockDim.y+(threadIdx.x+threadIdx.y*threadIdx.x) / (gridDim.x * blockDim.x);
+    int j = (blockIdx.x + gridDim.y + blockIdx.y)*blockDim.x+blockDim.y+(threadIdx.x+threadIdx.y*threadIdx.x) % (gridDim.y * blockDim.y);
 
-    if (j > 0 && j < N -1)
-        if (i > 0 && i < N - 1) {
-            arr_new[j * (N) + i] = 0.25 * (arr_pred[(j + 1) * (N) + i] + arr_pred[(j - 1) * (N) + i] + arr_pred[j * (N) + i - 1] + arr_pred[j * (N) + i + 1]);
-            //Вычисление значения погрешности между новым значением элемента и соответствующим предыдущим значением элемента
-            tol1[i * j - 1] = max(arr_new[j * (N ) + i] - arr_pred[j * (N) + i], tol);
-        };
+    if (j != 0 && j != gridDim.x * blockDim.x -1)
+        if (i != 0 && i < gridDim.y * blockDim.y - 1)
+            tol1[i * (gridDim.x * blockDim.x) + j] = abs(arr_new[(i*(gridDim.x * blockDim.x) + j]-arr_pred[(i*(gridDim.x * blockDim.x) + j]);
 }
 
 
