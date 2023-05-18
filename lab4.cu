@@ -113,7 +113,6 @@ int main(int argc, char* argv[]) {
     bool graphCreated = false;
 
     while ((iter_max > num_iter) && (error > tol)) {
-        if(!graphCreated){
             cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal);
 
             for (size_t i = 0; i < 100; i += 2) {
@@ -130,14 +129,11 @@ int main(int argc, char* argv[]) {
             cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0);
             graphCreated=true;
 
-        }
-        else{
             cudaGraphLaunch(graph_exec, stream);
             cudaMemcpyAsync(&error, mas_error, sizeof(double), cudaMemcpyDeviceToHost, stream);
             cudaStreamSynchronize(stream);
             num_iter+=100;
             graphCreated=false;
-        }
 
     }
 
