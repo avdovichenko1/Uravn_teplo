@@ -1,42 +1,42 @@
-#include <cstdlib>
-#include <cstdio>
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
 #include <malloc.h>
 #include <time.h>
 
 #include <cub/cub.cuh>
-#include <cub/block/block_load.cuh>
-#include <cub/block/block_store.cuh>
-#include <cub/block/block_reduce.cuh>
 #include <cuda_runtime.h>
 
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
 
-__global__ void updateTemperature(const double* arr_pred, double* arr_new, int N){
+__global__ void updateTemperature(const double *arr_pred, double *arr_new, size_t N)
+{
     int i = blockIdx.x + 1; // размер строки
     int j = threadIdx.x + 1; // столбца
-    int k = blockDim.x + 1; // блока
-//проверка находится ли элемент массива внутри границы
-   if (j != 0 && j != k - 1)
-        if (i != 0 && i != k - 1)
-            arr_new[i * N + j] = 0.25 * (arr_pred[i*N+j-1] + arr_pred[(i - 1) * N + j] +
-                                               arr_pred[(i+1)*N+j] + arr_pred[i * N + j + 1]);
-}
-
-__global__ void updateError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
-   //локальныt индексs элементов в блоке, в котором выполняется поток
-    int i = (blockIdx.x + gridDim.y + blockIdx.y)*blockDim.x+blockDim.y+(threadIdx.x+threadIdx.y*threadIdx.x) / (gridDim.x * blockDim.x);
-    int j = (blockIdx.x + gridDim.y + blockIdx.y)*blockDim.x+blockDim.y+(threadIdx.x+threadIdx.y*threadIdx.x) % (gridDim.y * blockDim.y);
-// проверяется, что индексы не находятся на границах массива
-    if (j != 0 && j != gridDim.x * blockDim.x -1)
-        if (i != 0 && i < gridDim.y * blockDim.y - 1)
-            tol1[i * (gridDim.x * blockDim.x) + j] = abs(arr_new[i*(gridDim.x * blockDim.x) + j]-arr_pred[i*(gridDim.x * blockDim.x) + j]); //вычисление абсолютной разности между элементами массивов
+    arr_new[i * N + j] = 0.25 * (arr_pred[i*N+j-1] + arr_pred[(i - 1) * N + j] +
+                                 arr_pred[(i+1)*N+j] + arr_pred[i * N + j + 1]);
 }
 
 
+__global__ void update_matrix(const double* arr_pred, double* arr_new)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    arr_new[i] = arr_pred[i] - arr_new[i];
+}
+
+// Функция востановления границ матрицы
+__global__ void restore(double* mas, int N){
+    size_t i = threadIdx.x;
+    double shag = 10.0 / (N-1);
+    mas[i] = 10.0 + i * shag;
+    mas[i * N] = 10.0 + i * shag;
+    mas[N - 1 + i * N] = 20.0 + i * shag;
+    mas[N * (N - 1) + i] = 20.0 + i * shag;
+}
 
 int main(int argc, char* argv[]) {
-    clock_t a=clock();
+    clock_t a = clock();
     int size;
     double tol;
     int iter_max;
@@ -60,100 +60,79 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    double *arr_pred = (double*)malloc((size) * (size) * sizeof(double));
-    double *arr_new = (double*)malloc((size) * (size) * sizeof(double));
-    
     cudaSetDevice(1);
 
     int num_iter = 0;
     double error = 1.0;
-    
-    arr_pred[0] = 10;
-    arr_pred[size-1] = 20;
-    arr_pred[size * (size - 1) +size - 1] = 30;
-    arr_pred[size * (size-1)] = 20;
 
-    int size_pot=32; // количество потоков
-    dim3 Block_size(size_pot, size_pot, 1); //размер блока и определение количества потоков в каждом блоке, 1 блок - 1024 потока
-    dim3 Grid_Size((size + 33)/size_pot, (size + 33)/size_pot, 1); // определяет количество блоков в сетке, рассчитывается
-    // на основе размера матрицы size и используется для распределения блоков на сетке таким образом, чтобы охватить
-    // всю матрицу и иметь достаточное количество блоков для выполнения параллельных вычислений на GPU
-
-    double* arr_pred_gp, *arr_new_gp;
-    cudaMalloc((void**)&arr_pred_gp, sizeof(double ) * size * size);
-    cudaMalloc((void**)&arr_new_gp, sizeof(double ) * size * size);
-
-    int len_host = size;
-    double shag = 10.0 / (size-1);
-
-    for (int i = 0; i < size-1; i++){
-        arr_pred[i * len_host] = 10 + shag * i;
-        arr_pred[i] = 10 + shag * i;
-        arr_pred[len_host * (size - 1) + i] = 20 + shag * i;
-        arr_pred[len_host * i + size - 1] = 20 + shag * i;
-
-        arr_new[len_host * i] = arr_pred[i * len_host];
-        arr_new[i] = arr_pred[i];
-        arr_new[len_host * (size - 1) + i] = arr_pred[len_host * (size - 1) + i];
-        arr_new[len_host * i + size - 1] = arr_pred[len_host * i + size - 1];
-    }
-    
     cudaStream_t stream; // указатель на объект потока CUDA
     cudaStreamCreate(&stream); // создание потока CUDA
-    
+
     cudaGraph_t graph; //указатель на объект графа CUDA
     cudaGraphExec_t graph_exec; // указатель на объект выполнения графа CUDA
-    
-    
-    double *tempStorage = NULL; // временного хранения буфера для операции редукции на GPU
-    size_t tempStorageBytes = 0;
 
-    double* d_ptr;
-    cudaMalloc((void **)(&d_ptr), sizeof(double)); // временное хранение указателя на GPU
+    double *arr_pred, *arr_new;
+    cudaMalloc((void **)&arr_pred, sizeof(double) * size * size);
+    cudaMalloc((void **)&arr_new, sizeof(double) * size * size);
 
-    double* mas_error;
-    cudaMalloc(&mas_error, sizeof(double) * (size * size)); // выделение памяти для GPU
+    restore<<<1, size>>>(arr_pred, size); //заполнение массива
     // копирование данных из хоста на устройство
-    cudaMemcpy(arr_pred_gp, arr_pred, sizeof(double) * size * size, cudaMemcpyHostToDevice);
-    cudaMemcpy(arr_new_gp, arr_new, sizeof(double) * size * size, cudaMemcpyHostToDevice);
-    
-    cub::DeviceReduce::Max(tempStorage, tempStorageBytes, d_ptr, mas_error, (size) * (size)); // получение размер временного буфера для редукции
-    cudaMalloc((void **)&tempStorage, tempStorageBytes); //выделение памяти для буфера
-    
+    cudaMemcpy(arr_new, arr_pred, sizeof(double) * size * size, cudaMemcpyHostToDevice);
 
-    double* itog; // указатель на выделенную память на GPU для хранения результата вычислений ядра reduceError
-    cudaMalloc(&itog, sizeof(double) * Error_grid.x);
+    // выделяем память на gpu. Хранение ошибки на device
+    double *mas_error = 0;
+    cudaMalloc((void **)&mas_error, sizeof(double)); //выделение памяти для GPU
 
-    cudaDeviceSynchronize(); // для синхронизации выполнения всех операций на устройстве CUDA
+    size_t tempStorageBytes = 0;
+    double *tempStorage = NULL; // временного хранения буфера для операции редукции на GPU
 
-    while ((error > tol) && (num_iter < iter_max)){
-        num_iter++;
-        updateTemperature<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size);
-        if ((num_iter % 100 == 0) || (num_iter == 1)){
-            error = 0.0;
-            updateError<<<Grid_Size, Block_size>>>(arr_pred_gp, arr_new_gp, size, error, d_ptr); // ядро обновляет значения массивов arr_pred_gp и arr_new_gp
-            
-            cub::DeviceReduce::Max(tempStorage, tempStorageBytes, d_ptr, mas_error, (size) * (size)); //// нахождение максимума в разнице матрицы
-           
-            cudaMemcpy(&error, &mas_error[0], sizeof(double), cudaMemcpyDeviceToHost);
+    // получаем размер временного буфера для редукции
+    cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
 
-            d_ptr = arr_pred_gp;
-            arr_pred_gp = arr_new_gp;
-            arr_new_gp = d_ptr;
+    cudaMalloc(&tempStorage, tempStorageBytes); //выделение памяти для буфера
 
-            printf("%d : %lf\n", num_iter, error);
-            fflush(stdout); //  проверить, что все данные, которые были записаны в буфер вывода с помощью функции printf(), записались
+    bool graphCreated = false;
+
+    while ((iter_max > num_iter) && (error > tol)) {
+        if(!graphCreated){
+            cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal);
+
+            for (size_t i = 0; i < 100; i += 2) {
+                updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_pred, arr_new, size);
+                updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_new, arr_pred, size);
+            }
+            update_matrix<<<size, size, 0, stream>>>(arr_pred, arr_new);
+
+            cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
+            restore<<<1, size, 0, stream>>>(arr_new, size);
+
+            cudaStreamEndCapture(stream, &graph);
+            cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0);
+            graphCreated=true;
+
         }
-        else {
-            
-            d_ptr = arr_pred_gp;
-            arr_pred_gp = arr_new_gp;
-            arr_new_gp = d_ptr;
+        else{
+            cudaGraphLaunch(graph_exec, stream);
+            cudaMemcpyAsync(&error, mas_error, sizeof(double), cudaMemcpyDeviceToHost, stream);
+            cudaStreamSynchronize(stream);
+            num_iter+=100;
+            graphCreated=false;
         }
+
     }
+
     printf("Финальные результаты: %d, %0.6lf\n", num_iter, error);
+
+    // удаление потока и графа
+    cudaStreamDestroy(stream);
+    cudaGraphDestroy(graph);
+
+    cudaFree(arr_pred);
+    cudaFree(arr_new);
+
     clock_t b=clock();
     double d=(double)(b-a)/CLOCKS_PER_SEC; // переводит в секунды
     printf("%.25f время в секундах", d);
+
     return 0;
 }
