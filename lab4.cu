@@ -116,17 +116,19 @@ int main(int argc, char* argv[]) {
             
         //update_matrix<<<size, size, 0, stream>>>(arr_pred, arr_new);
         int blockCount = size;
-        int threadCount = size;
-        int gridSize = blockCount * threadCount;
+    int threadCount = size;
 
-// Обновление матрицы
-for (int i = 0; i < gridSize; i++) {
-    int row = i / size + 1;
-    int col = i % size + 1;
-    if (row < size - 1 && col < size - 1) {
-        arr_new[row * size + col] = arr_pred[row * size + col] - arr_new[row * size + col];
+    // Обновление матрицы
+    for (int i = 0; i < blockCount; i++) {
+        for (int j = 0; j < threadCount; j++) {
+            int index = i * threadCount + j;
+            int row = i + 1;
+            int col = j + 1;
+            if (row < size - 1 && col < size - 1) {
+                arr_new[row * size + col] = arr_pred[row * size + col] - arr_new[row * size + col];
+            }
+        }
     }
-}
 
 
         cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
