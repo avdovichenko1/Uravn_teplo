@@ -75,19 +75,24 @@ int main(int argc, char* argv[]) {
     cudaMalloc((void **)&arr_pred, sizeof(double) * size * size);
     cudaMalloc((void **)&arr_new, sizeof(double) * size * size);
     
-    // Заполнение массива arr_pred в основной функции
-    double* host_arr_pred = (double*)malloc(sizeof(double) * size * size);
-    size_t i;
-    double shag = 10.0 / (size - 1);
-    for (i = 0; i < size; i++) {
-        host_arr_pred[i] = 10.0 + i * shag;
-        host_arr_pred[i * size] = 10.0 + i * shag;
-        host_arr_pred[size - 1 + i * size] = 20.0 + i * shag;
-        host_arr_pred[size * (size - 1) + i] = 20.0 + i * shag;
-    }
+    // Выделение памяти на хосте
+double* host_arr_pred = (double*)malloc(sizeof(double) * size * size);
+
+// Заполнение границ массива
+double shag = 10.0 / (size - 1);
+for (size_t i = 0; i < size; i++) {
+    host_arr_pred[i] = 10.0 + i * shag;
+    host_arr_pred[i * size] = 10.0 + i * shag;
+    host_arr_pred[size - 1 + i * size] = 20.0 + i * shag;
+    host_arr_pred[size * (size - 1) + i] = 20.0 + i * shag;
+}
+
+// Копирование данных из хоста в устройство
+cudaMemcpy(arr_pred, host_arr_pred, sizeof(double) * size * size, cudaMemcpyHostToDevice);
+free(host_arr_pred); // Освобождение памяти на хосте
     
-    cudaMemcpy(arr_pred, host_arr_pred, sizeof(double) * size * size, cudaMemcpyHostToDevice);
-    free(host_arr_pred); // Освобождение памяти на хосте
+    //restore<<<1, size>>>(arr_pred, size); //заполнение массива
+    //free(host_arr_pred); // Освобождение памяти на хосте
 
     //restore<<<1, size>>>(arr_pred, size); //заполнение массива
     // копирование данных из хоста на устройство
