@@ -118,8 +118,9 @@ free(host_arr_pred); // Освобождение памяти на хосте
 
             for (size_t i = 0; i < 100; i += 2) {
                 updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_pred, arr_new, size);
-                updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_new, arr_pred, size);
+                //updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_new, arr_pred, size);
             }
+            
             update_matrix<<<size, size, 0, stream>>>(arr_pred, arr_new);
 
             cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
