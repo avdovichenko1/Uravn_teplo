@@ -12,14 +12,14 @@
 
 
 __global__ void updateTemperature(const double* arr_pred, double* arr_new, int N){
-    int i = blockIdx.x; // размер строки
-    int j = threadIdx.x; // столбца
+    int i = blockIdx.x + 1; // размер строки
+    int j = threadIdx.x + 1; // столбца
     int k = blockDim.x + 1; // блока
 //проверка находится ли элемент массива внутри границы
    if (j != 0 && j != k - 1)
         if (i != 0 && i != k - 1)
-            arr_new[i * k + j] = 0.25 * (arr_pred[i*k+j-1] + arr_pred[(i - 1) * k + j] +
-                                               arr_pred[(i+1)*k+j] + arr_pred[i * k + j + 1]);
+            arr_new[i * N + j] = 0.25 * (arr_pred[i*N+j-1] + arr_pred[(i - 1) * N + j] +
+                                               arr_pred[(i+1)*N+j] + arr_pred[i * N + j + 1]);
 }
 
 __global__ void updateError(const double* arr_pred, double* arr_new, int N, double tol, double* tol1){
@@ -64,7 +64,6 @@ int main(int argc, char* argv[]) {
 
     int num_iter = 0;
     double error = 1.0;
-    double shag = 10.0 / (size-1);
     
     arr_pred[0] = 10;
     arr_pred[size-1] = 20;
@@ -78,10 +77,11 @@ int main(int argc, char* argv[]) {
     // всю матрицу и иметь достаточное количество блоков для выполнения параллельных вычислений на GPU
 
     double* arr_pred_gp, *arr_new_gp;
-    cudaMalloc((void**)&arr_pred_gp, sizeof(double ) * (size) * (size));
-    cudaMalloc((void**)&arr_new_gp, sizeof(double ) * (size) * (size));
+    cudaMalloc((void**)&arr_pred_gp, sizeof(double ) * size * size);
+    cudaMalloc((void**)&arr_new_gp, sizeof(double ) * size * size);
 
     int len_host = size;
+    double shag = 10.0 / (size-1);
 
     for (int i = 0; i < size-1; i++){
         arr_pred[i * len_host] = 10 + shag * i;
@@ -95,6 +95,13 @@ int main(int argc, char* argv[]) {
         arr_new[len_host * i + size - 1] = arr_pred[len_host * i + size - 1];
     }
     
+    cudaStream_t stream; // указатель на объект потока CUDA
+    cudaStreamCreate(&stream); // создание потока CUDA
+    
+    cudaGraph_t graph; //указатель на объект графа CUDA
+    cudaGraphExec_t graph_exec; // указатель на объект выполнения графа CUDA
+    
+    
     double *tempStorage = NULL; // временного хранения буфера для операции редукции на GPU
     size_t tempStorageBytes = 0;
 
@@ -104,15 +111,11 @@ int main(int argc, char* argv[]) {
     double* mas_error;
     cudaMalloc(&mas_error, sizeof(double) * (size * size)); // выделение памяти для GPU
     // копирование данных из хоста на устройство
-    cudaMemcpy(arr_pred_gp, arr_pred, sizeof(double) * (size ) * (size), cudaMemcpyHostToDevice);
-    cudaMemcpy(arr_new_gp, arr_new, sizeof(double) * (size) * (size), cudaMemcpyHostToDevice);
+    cudaMemcpy(arr_pred_gp, arr_pred, sizeof(double) * size * size, cudaMemcpyHostToDevice);
+    cudaMemcpy(arr_new_gp, arr_new, sizeof(double) * size * size, cudaMemcpyHostToDevice);
     
     cub::DeviceReduce::Max(tempStorage, tempStorageBytes, d_ptr, mas_error, (size) * (size)); // получение размер временного буфера для редукции
     cudaMalloc((void **)&tempStorage, tempStorageBytes); //выделение памяти для буфера
-
-
-    dim3 Error_block(1024,1,1); //  размер блока (block size) для запуска ядра на GPU
-    dim3 Error_grid(ceil((size * size)/(float)Error_block.x), 1, 1); // размер сетки для запуска ядра на GPU
     
 
     double* itog; // указатель на выделенную память на GPU для хранения результата вычислений ядра reduceError
