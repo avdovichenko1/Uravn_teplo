@@ -114,20 +114,20 @@ int main(int argc, char* argv[]) {
             updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_new, arr_pred, size);
         }
             
-        update_matrix<<<size, size, 0, stream>>>(arr_pred, arr_new);
-        
-        /*int blockCount = size;
+        //update_matrix<<<size, size, 0, stream>>>(arr_pred, arr_new);
+        int blockCount = size;
         int threadCount = size;
         int gridSize = blockCount * threadCount;
 
-        // Обновление матрицы
-        for (int i = 0; i < size*size; i++) {
-            int row = i / size;
-            int col = i % size;
-            if (row > 0 && row < size - 1 && col > 0 && col < size - 1) {
-                arr_new[i] = arr_pred[i] - arr_new[i];
-            }
-        }*/
+// Обновление матрицы
+for (int i = 0; i < gridSize; i++) {
+    int row = i / size + 1;
+    int col = i % size + 1;
+    if (row < size - 1 && col < size - 1) {
+        arr_new[row * size + col] = arr_pred[row * size + col] - arr_new[row * size + col];
+    }
+}
+
 
         cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
         restore<<<1, size, 0, stream>>>(arr_new, size);
