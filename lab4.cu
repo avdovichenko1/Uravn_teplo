@@ -7,6 +7,7 @@
 #include <cub/block/block_load.cuh>
 #include <cub/block/block_store.cuh>
 #include <cub/block/block_reduce.cuh>
+#include <cuda_runtime.h>
 
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
@@ -61,6 +62,8 @@ int main(int argc, char* argv[]) {
 
     double *arr_pred = (double*)malloc((size) * (size) * sizeof(double));
     double *arr_new = (double*)malloc((size) * (size) * sizeof(double));
+    
+    cudaSetDevice(1);
 
     int num_iter = 0;
     double error = 1.0;
