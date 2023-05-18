@@ -114,25 +114,23 @@ int main(int argc, char* argv[]) {
             updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_new, arr_pred, size);
         }
             
-        update_matrix<<<size, size, 0, stream>>>(arr_pred, arr_new);
+        //update_matrix<<<size, size, 0, stream>>>(arr_pred, arr_new);
+        
+        int blockCount = size;
+        int threadCount = size;
+        int gridSize = blockCount * threadCount;
+
+        // Обновление матрицы
+        for (int i = 0; i < gridSize; i++) {
+            int row = i / size;
+            int col = i % size;
+            if (row > 0 && row < size - 1 && col > 0 && col < size - 1) {
+                arr_new[i] = arr_pred[i] - arr_new[i];
+            }
+        }
 
         cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
-        //restore<<<1, size, 0, stream>>>(arr_new, size);
-        
-        
-        double* host_arr_pred = (double*)malloc(sizeof(double) * size * size);
-
-        // Заполнение границ массива
-        double shag = 10.0 / (size - 1);
-        for (size_t i = 0; i < size; i++) {
-            host_arr_pred[i] = 10.0 + i * shag;
-            host_arr_pred[i * size] = 10.0 + i * shag;
-            host_arr_pred[size - 1 + i * size] = 20.0 + i * shag;
-            host_arr_pred[size * (size - 1) + i] = 20.0 + i * shag;
-        }
-        // Копирование данных из хоста в устройство
-        cudaMemcpy(arr_new, host_arr_pred, sizeof(double) * size * size, cudaMemcpyHostToDevice);
-        free(host_arr_pred); // Освобождение памяти на хосте
+        restore<<<1, size, 0, stream>>>(arr_new, size);
         
 
         cudaStreamEndCapture(stream, &graph);
