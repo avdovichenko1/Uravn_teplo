@@ -74,8 +74,18 @@ int main(int argc, char* argv[]) {
     double *arr_pred, *arr_new;
     cudaMalloc((void **)&arr_pred, sizeof(double) * size * size);
     cudaMalloc((void **)&arr_new, sizeof(double) * size * size);
+    
+    // Функция востановления границ матрицы
+    {
+        int i = threadIdx.x;
+        double shag = 10.0 / (size-1);
+        arr_pred[i] = 10.0 + i * shag;
+        arr_pred[i * size] = 10.0 + i * shag;
+        arr_pred[size - 1 + i * size] = 20.0 + i * shag;
+        arr_pred[size * (size - 1) + i] = 20.0 + i * shag;
+    }
 
-    restore<<<1, size>>>(arr_pred, size); //заполнение массива
+    //restore<<<1, size>>>(arr_pred, size); //заполнение массива
     // копирование данных из хоста на устройство
     cudaMemcpy(arr_new, arr_pred, sizeof(double) * size * size, cudaMemcpyHostToDevice);
 
