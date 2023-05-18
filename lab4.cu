@@ -130,6 +130,9 @@ int main(int argc, char* argv[]) {
         cudaMemcpyAsync(&error, mas_error, sizeof(double), cudaMemcpyDeviceToHost, stream);
         cudaStreamSynchronize(stream);
         num_iter+=100;
+        
+        printf("%d : %lf\n", num_iter, error);
+        fflush(stdout); //  проверить, что все данные, которые были записаны в буфер вывода с помощью функции printf(), записались
     }
 
 
