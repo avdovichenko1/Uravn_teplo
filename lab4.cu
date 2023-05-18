@@ -107,7 +107,7 @@ int main(int argc, char* argv[]) {
     cudaMalloc(&tempStorage, tempStorageBytes); //выделение памяти для буфера
 
     while ((iter_max > num_iter) && (error > tol)) {
-        cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal);
+        cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal); //записывает операции, выполняемые в потоке
 
        for (size_t i = 0; i < 100; i += 2) {
             updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_pred, arr_new, size);
@@ -120,11 +120,11 @@ int main(int argc, char* argv[]) {
         restore<<<1, size, 0, stream>>>(arr_new, size);
         
 
-        cudaStreamEndCapture(stream, &graph);
-        cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0);
-
-        cudaGraphLaunch(graph_exec, stream);
-        cudaMemcpyAsync(&error, mas_error, sizeof(double), cudaMemcpyDeviceToHost, stream);
+        cudaStreamEndCapture(stream, &graph); //завершение захвата операций
+        
+        cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0); // создание граф выполнения
+        cudaGraphLaunch(graph_exec, stream); // его запуск
+        cudaMemcpyAsync(&error, mas_error, sizeof(double), cudaMemcpyDeviceToHost, stream); //асинхронная передача данных между устройством (GPU) и хостом (CPU)
         cudaStreamSynchronize(stream);
         num_iter+=100;
         
@@ -135,7 +135,6 @@ int main(int argc, char* argv[]) {
 
     printf("Финальные результаты: %d, %0.6lf\n", num_iter, error);
 
-    // удаление потока и графа
     cudaStreamDestroy(stream);
     cudaGraphDestroy(graph);
 
