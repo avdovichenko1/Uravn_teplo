@@ -110,17 +110,18 @@ int main(int argc, char* argv[]) {
 
     cudaMalloc(&tempStorage, tempStorageBytes); //выделение памяти для буфера
 
-   while ((iter_max > num_iter) && (error > tol)) {
+    while ((iter_max > num_iter) && (error > tol)) {
         cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal);
 
-        for (size_t i = 0; i < 100; i += 2) {
+       for (size_t i = 0; i < 100; i += 2) {
             updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_pred, arr_new, size);
             updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_new, arr_pred, size);
         }
-
+            
         update_matrix<<<size, size, 0, stream>>>(arr_pred, arr_new);
 
         cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
+        restore<<<1, size, 0, stream>>>(arr_new, size);
 
         cudaStreamEndCapture(stream, &graph);
         cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0);
@@ -128,12 +129,8 @@ int main(int argc, char* argv[]) {
         cudaGraphLaunch(graph_exec, stream);
         cudaMemcpyAsync(&error, mas_error, sizeof(double), cudaMemcpyDeviceToHost, stream);
         cudaStreamSynchronize(stream);
-        num_iter += 100;
-
-        // Обновление границ матрицы
-        cudaMemcpy(arr_new, arr_pred, sizeof(double) * size * size, cudaMemcpyDeviceToDevice);
-        restore<<<1, size, 0, stream>>>(arr_new, size);
-}
+        num_iter+=100;
+    }
 
 
     printf("Финальные результаты: %d, %0.6lf\n", num_iter, error);
