@@ -25,7 +25,7 @@ __global__ void restore(double* mas, int N){
 __global__ void updateTemperature(const double *arr_pred, double *arr_new, int N){
     int i = blockIdx.x;
     int j = threadIdx.x; 
-    if (i < N - 1 && j < N - 1 && i > 0 && j < 0) {
+    if (i < N - 1 && j < N - 1 && i > 0 && j > 0) {
         arr_new[i * N + j] = 0.25 * (arr_pred[i*N+j-1] + arr_pred[(i - 1) * N + j] +
                                  arr_pred[(i+1)*N+j] + arr_pred[i * N + j + 1]);
     }
@@ -34,9 +34,9 @@ __global__ void updateTemperature(const double *arr_pred, double *arr_new, int N
 
 __global__ void update_matrix(const double* arr_pred, double* arr_new, int N){
     int i = blockIdx.x * blockDim.x + threadIdx.x; //вычисления линейного индекса элемента внутри сетки CUDA
-    //if (i < N - 1 && i > 0){
+    if (i < N - 1 && i > 0){
         arr_new[i] = arr_pred[i] - arr_new[i];
-    //}
+    }
 }
 
 
@@ -125,7 +125,7 @@ int main(int argc, char* argv[]) {
         updateTemperature<<<block, thread, 0, stream>>>(arr_new, arr_pred, size);
     }
             
-    update_matrix<<<size, size, 0, stream>>>(arr_pred, arr_new, size);
+    update_matrix<<<block, thread, 0, stream>>>(arr_pred, arr_new, size);
 
     cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
     restore<<<1, size, 0, stream>>>(arr_new, size);
