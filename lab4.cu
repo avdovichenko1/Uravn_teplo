@@ -121,11 +121,11 @@ int main(int argc, char* argv[]) {
     cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal); //записывает операции, выполняемые в потоке
 
     for (size_t i = 0; i < 100; i += 2) {
-        updateTemperature<<<block-2, thread-2, 0, stream>>>(arr_pred, arr_new, size); // количество потоков в блоке, количество блоков, разделяемая память
-        updateTemperature<<<block-2, thread-2, 0, stream>>>(arr_new, arr_pred, size);
+        updateTemperature<<<block, thread, 0, stream>>>(arr_pred, arr_new, size); // количество потоков в блоке, количество блоков, разделяемая память
+        updateTemperature<<<block, thread, 0, stream>>>(arr_new, arr_pred, size);
     }
             
-    update_matrix<<<block, thread, 0, stream>>>(arr_pred, arr_new, size);
+    update_matrix<<<size, size, 0, stream>>>(arr_pred, arr_new, size);
 
     cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
     restore<<<1, size, 0, stream>>>(arr_new, size);
