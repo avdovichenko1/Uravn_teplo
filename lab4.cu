@@ -150,13 +150,13 @@ int main(int argc, char* argv[]) {
    cudaMemcpy(host_arr_pred_1, arr_pred, sizeof(double) * size * size, cudaMemcpyDeviceToHost);
 
    // Вывод матрицы на экран
-   printf("Матрица arr_pred после выполнения операций:\n");
+   /*printf("Матрица arr_pred после выполнения операций:\n");
    for (int i = 0; i < size; i++) {
       for (int j = 0; j < size; j++) {
          printf("%0.2lf ", host_arr_pred_1[i * size + j]);
       }
       printf("\n");
-   }
+   }*/
 
    free(host_arr_pred_1); // Освобождение памяти на хосте
 
