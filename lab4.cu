@@ -12,8 +12,10 @@
 
 __global__ void updateTemperature(const double *arr_pred, double *arr_new, size_t N)
 {
-    int i = blockIdx.x + 1; // размер строки
-    int j = threadIdx.x + 1; // столбца
+   // int i = blockIdx.x + 1; // размер строки
+   // int j = threadIdx.x + 1; // столбца
+    int i=blockDim.y * blockIdx.y+threadIdx.y;
+    int j=blockDim.x * blockIdx.x + threadIdx.x;
     arr_new[i * N + j] = 0.25 * (arr_pred[i*N+j-1] + arr_pred[(i - 1) * N + j] +
                                  arr_pred[(i+1)*N+j] + arr_pred[i * N + j + 1]);
 }
@@ -25,7 +27,7 @@ __global__ void update_matrix(const double* arr_pred, double* arr_new)
     arr_new[i] = arr_pred[i] - arr_new[i];
 }
 
-// Функция востановления границ матрицы
+
 __global__ void restore(double* mas, int N){
     size_t i = threadIdx.x;
     double shag = 10.0 / (N-1);
@@ -60,7 +62,7 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    cudaSetDevice(1);
+    cudaSetDevice(0);
 
     int num_iter = 0;
     double error = 1.0;
