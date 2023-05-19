@@ -107,9 +107,9 @@ int main(int argc, char* argv[]) {
     double *tempStorage = NULL; // временного хранения буфера для операции редукции на GPU
     
     int thread = 256;
-    int block = size/256;
+    int block = size*size/256;
     
-    if (size%256!=0){
+    if ((size*size)%256!=0){
         block+=1;
     }
 
