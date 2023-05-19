@@ -106,8 +106,8 @@ int main(int argc, char* argv[]) {
     size_t tempStorageBytes = 0;
     double *tempStorage = NULL; // временного хранения буфера для операции редукции на GPU
     
-   dim3 thread = size < 1024 ? size : 1024;
-    dim3 block = size / (size < 1024 ? size : 1024);
+   dim3 thread = size-2;
+   dim3 block = size-2;
 
     // получаем размер временного буфера для редукции
     cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
