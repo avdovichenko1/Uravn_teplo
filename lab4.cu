@@ -13,12 +13,12 @@
 __global__ void restore(double* mas, int N){
     size_t i = threadIdx.x;
     double shag = 10.0 / (N-1);
-    if (i < N - 1 && i > 0){
+    //if (i < N - 1 && i > 0){
         mas[i] = 10.0 + i * shag;
         mas[i * N] = 10.0 + i * shag;
         mas[N - 1 + i * N] = 20.0 + i * shag;
         mas[N * (N - 1) + i] = 20.0 + i * shag;
-    }
+    //}
 }
 
 
