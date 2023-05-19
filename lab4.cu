@@ -10,23 +10,6 @@
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
 
-__global__ void updateTemperature(const double *arr_pred, double *arr_new, size_t N){
-    int i = blockIdx.x + 1; // размер строки
-    int j = threadIdx.x + 1; // столбца
-    if (i < N - 1 && j < N - 1) {
-        arr_new[i * N + j] = 0.25 * (arr_pred[i*N+j-1] + arr_pred[(i - 1) * N + j] +
-                                 arr_pred[(i+1)*N+j] + arr_pred[i * N + j + 1]);
-    }
-}
-
-
-__global__ void update_matrix(const double* arr_pred, double* arr_new)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    arr_new[i] = arr_pred[i] - arr_new[i];
-}
-
-
 __global__ void restore(double* mas, int N){
     size_t i = threadIdx.x;
     double shag = 10.0 / (N-1);
@@ -35,6 +18,23 @@ __global__ void restore(double* mas, int N){
     mas[N - 1 + i * N] = 20.0 + i * shag;
     mas[N * (N - 1) + i] = 20.0 + i * shag;
 }
+
+
+__global__ void updateTemperature(const double *arr_pred, double *arr_new, size_t N){
+    int i = blockIdx.x;
+    int j = threadIdx.x; 
+    if (i < N - 1 && j < N - 1 && i > 0 && j < 0) {
+        arr_new[i * N + j] = 0.25 * (arr_pred[i*N+j-1] + arr_pred[(i - 1) * N + j] +
+                                 arr_pred[(i+1)*N+j] + arr_pred[i * N + j + 1]);
+    }
+}
+
+
+__global__ void update_matrix(const double* arr_pred, double* arr_new){
+    int i = blockIdx.x * blockDim.x + threadIdx.x; //вычисления линейного индекса элемента внутри сетки CUDA
+    arr_new[i] = arr_pred[i] - arr_new[i];
+}
+
 
 int main(int argc, char* argv[]) {
     clock_t a = clock();
@@ -101,6 +101,9 @@ int main(int argc, char* argv[]) {
 
     size_t tempStorageBytes = 0;
     double *tempStorage = NULL; // временного хранения буфера для операции редукции на GPU
+    
+    dim3 thread = size < 1024 ? size : 1024;
+    dim3 block = size / (size < 1024 ? size : 1024);
 
     // получаем размер временного буфера для редукции
     cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
@@ -109,27 +112,23 @@ int main(int argc, char* argv[]) {
     //
     cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal); //записывает операции, выполняемые в потоке
 
-       for (size_t i = 0; i < 100; i += 2) {
-            updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_pred, arr_new, size);
-            updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_new, arr_pred, size);
-        }
+    for (size_t i = 0; i < 100; i += 2) {
+        updateTemperature<<<block, thread, 0, stream>>>(arr_pred, arr_new, size); // количество потоков в блоке, количество блоков, разделяемая память
+        updateTemperature<<<block, thread, 0, stream>>>(arr_new, arr_pred, size);
+    }
             
-        update_matrix<<<size, size, 0, stream>>>(arr_pred, arr_new);
+    update_matrix<<<block, thread, 0, stream>>>(arr_pred, arr_new);
 
-        cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
-        restore<<<1, size, 0, stream>>>(arr_new, size);
+    cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
+    restore<<<1, size, 0, stream>>>(arr_new, size);
         
 
-        cudaStreamEndCapture(stream, &graph); //завершение захвата операций
-        
-        cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0); // создание граф выполнения
-    
-    
-    
+    cudaStreamEndCapture(stream, &graph); //завершение захвата операций    
+    cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0); // создание граф выполнения
+       
 
     while ((iter_max > num_iter) && (error > tol)) {
         cudaGraphLaunch(graph_exec, stream); // его запуск
-        cudaMemcpyAsync(&error, mas_error, sizeof(double), cudaMemcpyDeviceToHost, stream); //асинхронная передача данных между устройством (GPU) и хостом (CPU)
         cudaStreamSynchronize(stream);
         num_iter+=100;
         
