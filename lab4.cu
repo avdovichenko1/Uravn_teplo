@@ -108,6 +108,10 @@ int main(int argc, char* argv[]) {
     
     int thread = 256;
     int block = size/256;
+    
+    if (size%256!=0){
+        block+=1;
+    }
 
     // получаем размер временного буфера для редукции
     cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
