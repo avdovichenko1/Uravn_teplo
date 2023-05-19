@@ -13,12 +13,12 @@
 __global__ void restore(double* mas, int N){
     size_t i = threadIdx.x;
     double shag = 10.0 / (N-1);
-    //if (i < N - 1 && i > 0){
+    if (i < N){
         mas[i] = 10.0 + i * shag;
         mas[i * N] = 10.0 + i * shag;
         mas[N - 1 + i * N] = 20.0 + i * shag;
         mas[N * (N - 1) + i] = 20.0 + i * shag;
-    //}
+    }
 }
 
 
@@ -33,9 +33,10 @@ __global__ void updateTemperature(const double *arr_pred, double *arr_new, int N
 
 
 __global__ void update_matrix(const double* arr_pred, double* arr_new, int N){
-    int i = blockIdx.x * blockDim.x + threadIdx.x; //вычисления линейного индекса элемента внутри сетки CUDA
-    if (i < N - 1 && i > 0){
-        arr_new[i] = arr_pred[i] - arr_new[i];
+    int i = blockDim.x*blockIdx.x + threadIdx.x; 
+    int j = blockDim.y*blockIdx.y + threadIdx.y;  //вычисления линейного индекса элемента внутри сетки CUDA
+    if (i < N && j < N){
+        arr_new[i*N+j] = arr_pred[i*N+j] - arr_new[i*N+j];
     }
 }
 
