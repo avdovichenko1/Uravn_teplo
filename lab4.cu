@@ -10,12 +10,9 @@
 #define max(x, y) ((x) > (y) ? (x) : (y))
 
 
-__global__ void updateTemperature(const double *arr_pred, double *arr_new, size_t N)
-{
-   // int i = blockIdx.x + 1; // размер строки
-   // int j = threadIdx.x + 1; // столбца
-    int i=blockDim.y * blockIdx.y+threadIdx.y;
-    int j=blockDim.x * blockIdx.x + threadIdx.x;
+__global__ void updateTemperature(const double *arr_pred, double *arr_new, size_t N){
+    int i = blockIdx.x + 1; // размер строки
+    int j = threadIdx.x + 1; // столбца
     arr_new[i * N + j] = 0.25 * (arr_pred[i*N+j-1] + arr_pred[(i - 1) * N + j] +
                                  arr_pred[(i+1)*N+j] + arr_pred[i * N + j + 1]);
 }
@@ -140,6 +137,21 @@ int main(int argc, char* argv[]) {
 
 
     printf("Финальные результаты: %d, %0.6lf\n", num_iter, error);
+   
+   // Копирование данных из устройства на хост
+   double* host_arr_pred = (double*)malloc(sizeof(double) * size * size);
+   cudaMemcpy(host_arr_pred, arr_pred, sizeof(double) * size * size, cudaMemcpyDeviceToHost);
+
+   // Вывод матрицы на экран
+   printf("Матрица arr_pred после выполнения операций:\n");
+   for (int i = 0; i < size; i++) {
+      for (int j = 0; j < size; j++) {
+         printf("%0.2lf ", host_arr_pred[i * size + j]);
+      }
+      printf("\n");
+   }
+
+   free(host_arr_pred); // Освобождение памяти на хосте
 
     cudaStreamDestroy(stream);
     cudaGraphDestroy(graph);
