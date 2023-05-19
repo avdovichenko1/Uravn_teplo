@@ -13,8 +13,10 @@
 __global__ void updateTemperature(const double *arr_pred, double *arr_new, size_t N){
     int i = blockIdx.x + 1; // размер строки
     int j = threadIdx.x + 1; // столбца
-    arr_new[i * N + j] = 0.25 * (arr_pred[i*N+j-1] + arr_pred[(i - 1) * N + j] +
+    if (i < N - 1 && j < N - 1) {
+        arr_new[i * N + j] = 0.25 * (arr_pred[i*N+j-1] + arr_pred[(i - 1) * N + j] +
                                  arr_pred[(i+1)*N+j] + arr_pred[i * N + j + 1]);
+    }
 }
 
 
