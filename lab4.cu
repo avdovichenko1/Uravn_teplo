@@ -23,8 +23,8 @@ __global__ void restore(double* mas, int N){
 
 
 __global__ void updateTemperature(const double *arr_pred, double *arr_new, int N){
-    int i = blockIdx.x;
-    int j = threadIdx.x; 
+    int i = blockDim.x*blockIdx.x + threadIdx.x; 
+    int j = blockDim.y*blockIdx.y + threadIdx.y; 
     if (i < N - 1 && j < N - 1 && i > 0 && j > 0) {
         arr_new[i * N + j] = 0.25 * (arr_pred[i*N+j-1] + arr_pred[(i - 1) * N + j] +
                                  arr_pred[(i+1)*N+j] + arr_pred[i * N + j + 1]);
@@ -106,12 +106,9 @@ int main(int argc, char* argv[]) {
     size_t tempStorageBytes = 0;
     double *tempStorage = NULL; // временного хранения буфера для операции редукции на GPU
     
-    int thread = 256;
-    int block = size*size/256;
-    
-    if ((size*size)%256!=0){
-        block+=1;
-    }
+    dim3 thread(32,32);
+    dim3 block(size/thread.x+1, size/thread.y+1);
+  
 
     // получаем размер временного буфера для редукции
     cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
