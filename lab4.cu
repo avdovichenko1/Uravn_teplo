@@ -105,9 +105,8 @@ int main(int argc, char* argv[]) {
     cub::DeviceReduce::Max(tempStorage, tempStorageBytes, arr_new, mas_error, size * size, stream);
 
     cudaMalloc(&tempStorage, tempStorageBytes); //выделение памяти для буфера
-
-    while ((iter_max > num_iter) && (error > tol)) {
-        cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal); //записывает операции, выполняемые в потоке
+    //
+    cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal); //записывает операции, выполняемые в потоке
 
        for (size_t i = 0; i < 100; i += 2) {
             updateTemperature<<<size - 2, size - 2, 0, stream>>>(arr_pred, arr_new, size);
@@ -123,6 +122,11 @@ int main(int argc, char* argv[]) {
         cudaStreamEndCapture(stream, &graph); //завершение захвата операций
         
         cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0); // создание граф выполнения
+    
+    
+    
+
+    while ((iter_max > num_iter) && (error > tol)) {
         cudaGraphLaunch(graph_exec, stream); // его запуск
         cudaMemcpyAsync(&error, mas_error, sizeof(double), cudaMemcpyDeviceToHost, stream); //асинхронная передача данных между устройством (GPU) и хостом (CPU)
         cudaStreamSynchronize(stream);
