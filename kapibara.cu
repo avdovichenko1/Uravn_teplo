@@ -1,109 +1,218 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-#include <cublas_v2.h>
+#include <iostream>
+#include <cstring>
+#include <cmath>
+#include <ctime>
+#include <iomanip>
+
+#include <cuda_runtime.h>
+#include <cub/cub.cuh>
+
+#include "nccl.h"
+#include "mpi.h"
+
+#define CORNER1 10
+#define CORNER2 20
+#define CORNER3 30
+#define CORNER4 20
 
 
-cublasHandle_t handle;
-
-__global__ void sigmoid(float* x) {
-    int idx = threadIdx.x;
-    x[idx] = exp(x[idx]) / (1 + exp(x[idx]));
+// Главная функция - расчёт поля 
+__global__
+void calculateMatrix(double* matrixA, double* matrixB, size_t size, size_t sizePerGpu)
+{
+	unsigned int j = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int i = blockIdx.y * blockDim.y + threadIdx.y;
+	
+	if(!(j == 0 || i == 0 || j == size - 1 || i == sizePerGpu - 1))
+	{
+		matrixB[i * size + j] = 0.25 * (matrixA[i * size + j - 1] + matrixA[(i - 1) * size + j] +
+							matrixA[(i + 1) * size + j] + matrixA[i * size + j + 1]);	
+	}
 }
 
-class Linear {
-    float* weight;
-    float* bias;
-    int in_features;
-    int out_features;
-public:
-    Linear() {
-        weight = NULL;
-        bias = NULL;
-        in_features = 0;
-        out_features = 0;
-    };
-    Linear(int in, int out) {
-        weight = NULL;
-        bias = NULL;
-        in_features = in;
-        out_features = out;
-    }
-    void initializer(FILE* weights){
-        float* w = (float*)malloc(in_features * out_features * sizeof(float));
-        float* b = (float*)malloc(out_features * sizeof(float));
-        fread(w, sizeof(float), in_features*out_features, weights);
-        fread(b, sizeof(float), out_features, weights);
-        cudaMalloc((void**)&weight, in_features * out_features * sizeof(float));
-        cudaMalloc((void**)&bias, out_features * sizeof(float));
-        cudaMemcpy(weight, w, in_features * out_features * sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpy(bias, b, out_features * sizeof(float), cudaMemcpyHostToDevice);
-        free(w);
-        free(b);
-    }
-    float* operator() (float* x) {
-        const float a = 1;
-        cublasSgemv(handle, CUBLAS_OP_T, in_features, out_features, &a, weight, in_features, x, 1, &a, bias, 1);
-        cublasScopy(handle, out_features, bias, 1, x, 1);
-        return x;
-    }
-    ~Linear() {
-        if (weight)
-            cudaFree(weight);
-        if (bias)
-            cudaFree(bias);
-    }
-};
+// Функция, подсчитывающая разницу матриц
+__global__
+void getErrorMatrix(double* matrixA, double* matrixB, double* outputMatrix, size_t size)
+{
+	size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-class Net {
-    //прямое распространение информации
-    float* forward(float* x) {
-        sigmoid<<<1, 256>>>(fc1(x));
-        sigmoid<<<1, 16>>>(fc2(x));
-        sigmoid<<<1, 1>>>(fc3(x));
-        return x;
-    }
-public:
-    Linear fc1;
-    Linear fc2;
-    Linear fc3;
-    Net() {
-        fc1 = Linear((int)pow(32,2), (int)pow(16,2));
-        fc2 = Linear((int)pow(16,2), (int)pow(4,2));
-        fc3 = Linear((int)pow(4,2), 1);
-    }
-    float* operator() (float* r) {
-        return forward(r);
-    }
-};
-
-int main() {
-    int size = 1024;
-    float* input_layer = (float*)malloc(size * sizeof(float));
-    FILE* input = fopen("input.npy", "rb");
-    FILE* weight = fopen("weight.npy", "rb");
-    if(input_layer) fread(input_layer, sizeof(float), size, input);
-
-    float* d_layer;
-    cudaMalloc((void**)&d_layer, size);
-    cudaMemcpy(d_layer, input_layer, size, cudaMemcpyHostToDevice);
-
-    cublasCreate(&handle);
-
-    Net net = Net();
-    net.fc1.initializer(weight);
-    net.fc2.initializer(weight);
-    net.fc3.initializer(weight);
-    float result;
-    float* d_res;
-    cudaMalloc((void**)&d_res, sizeof(float));
-    d_res = net(d_layer);
-    cudaMemcpy(&result, d_res, sizeof(float), cudaMemcpyDeviceToHost);
-    printf("%lf\n\n", result);
-
-    cublasDestroy(handle);
-
-    free(input_layer);
-    return 0;
+	outputMatrix[idx] = std::abs(matrixB[idx] - matrixA[idx]);
 }
 
+int main(int argc, char** argv)
+{
+	int rank, sizeOfTheGroup;
+    MPI_Init(&argc, &argv);
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &sizeOfTheGroup);
+
+	cudaSetDevice(rank);
+
+    // Получаем значения из командной строки
+	const double minError = std::pow(10, -std::stoi(argv[1]));
+	const int size = std::stoi(argv[2]);
+	const int maxIter = std::stoi(argv[3]);
+	const size_t totalSize = size * size;
+
+	if (rank == 0)
+	{
+		std::cout << "Parameters: " << std::endl <<
+		"Min error: " << minError << std::endl <<
+		"Maximal number of iteration: " << maxIter << std::endl <<
+		"Grid size: " << size << std::endl;
+	}
+
+    if (rank != 0)
+        cudaDeviceEnablePeerAccess(rank - 1, 0);
+    if (rank != sizeOfTheGroup - 1)
+        cudaDeviceEnablePeerAccess(rank + 1, 0);
+
+    ncclUniqueId id;
+    ncclComm_t comm;
+    if (rank == 0) 
+	{
+		ncclGetUniqueId(&id);
+	}
+    MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);
+    ncclCommInitRank(&comm, sizeOfTheGroup, id, rank);
+
+	// Размечаем границы между устройствами
+	size_t sizeOfAreaForOneProcess = size / sizeOfTheGroup;
+	size_t startYIdx = sizeOfAreaForOneProcess * rank;
+
+	// Выделение памяти на хосте
+	double* matrixA, *matrixB;
+    cudaMallocHost(&matrixA, sizeof(double) * totalSize);
+    cudaMallocHost(&matrixB, sizeof(double) * totalSize);
+
+	std::memset(matrixA, 0, size * size * sizeof(double));
+
+	// Заполнение граничных условий
+	matrixA[0] = CORNER1;
+	matrixA[size - 1] = CORNER2;
+	matrixA[size * size - 1] = CORNER3;
+	matrixA[size * (size - 1)] = CORNER4;
+
+	const double step = 1.0 * (CORNER2 - CORNER1) / (size - 1);
+	for (int i = 1; i < size - 1; i++)
+	{
+		matrixA[i] = CORNER1 + i * step;
+		matrixA[i * size] = CORNER1 + i * step;
+		matrixA[size - 1 + i * size] = CORNER2 + i * step;
+		matrixA[size * (size - 1) + i] = CORNER4 + i * step;
+	}
+
+	std::memcpy(matrixB, matrixA, totalSize * sizeof(double));
+
+	double* deviceMatrixAPtr, *deviceMatrixBPtr, *deviceError, *errorMatrix, *tempStorage = NULL;
+
+	// Расчитываем, сколько памяти требуется процессу
+	if (rank != 0 && rank != sizeOfTheGroup - 1)
+	{
+		sizeOfAreaForOneProcess += 2;
+	}
+	else 
+	{
+		sizeOfAreaForOneProcess += 1;
+	}
+
+	size_t sizeOfAllocatedMemory = size * sizeOfAreaForOneProcess;
+
+	// Выделяем память на девайсе
+	cudaMalloc((void**)&deviceMatrixAPtr, sizeOfAllocatedMemory * sizeof(double));
+	cudaMalloc((void**)&deviceMatrixBPtr, sizeOfAllocatedMemory * sizeof(double));
+	cudaMalloc((void**)&errorMatrix, sizeOfAllocatedMemory * sizeof(double));
+	cudaMalloc((void**)&deviceError, sizeof(double));
+
+	// Копируем часть заполненной матрицы в выделенную память, начиная с 1 строки
+	size_t offset = (rank != 0) ? size : 0;
+ 	cudaMemcpy(deviceMatrixAPtr, matrixA + (startYIdx * size) - offset, sizeof(double) * sizeOfAllocatedMemory, cudaMemcpyHostToDevice);
+	cudaMemcpy(deviceMatrixBPtr, matrixB + (startYIdx * size) - offset, sizeof(double) * sizeOfAllocatedMemory, cudaMemcpyHostToDevice);
+
+	// Здесь мы получаем размер временного буфера для редукции и выделяем память для этого буфера
+	size_t tempStorageSize = 0;
+	cub::DeviceReduce::Max(tempStorage, tempStorageSize, errorMatrix, deviceError, size * sizeOfAreaForOneProcess);
+	cudaMalloc((void**)&tempStorage, tempStorageSize);
+
+	int iter = 0; 
+	double* error;
+	cudaMallocHost(&error, sizeof(double));
+	*error = 1.0;
+
+    unsigned int threads_x = (size < 1024) ? size : 1024;
+    unsigned int blocks_y = sizeOfAreaForOneProcess;
+    unsigned int blocks_x = size / threads_x;
+
+    dim3 blockDim(threads_x, 1);
+    dim3 gridDim(blocks_x, blocks_y);
+
+    cudaStream_t stream, memoryStream;
+    cudaStreamCreate(&stream);
+    cudaStreamCreate(&memoryStream);
+
+	// Главный алгоритм 
+	clock_t begin = clock();
+	while(iter < maxIter && (*error) > minError)
+	{
+		iter++;
+
+		// Расчет матрицы
+		calculateMatrix<<<gridDim, blockDim, 0, stream>>>(deviceMatrixAPtr, deviceMatrixBPtr, size, sizeOfAreaForOneProcess);
+		
+		// Расчитываем ошибку каждую сотую итерацию
+		if (iter % 100 == 0)
+		{
+			getErrorMatrix<<<blocks_x * blocks_y, threads_x, 0, stream>>>(deviceMatrixAPtr, deviceMatrixBPtr, errorMatrix, size);
+			cub::DeviceReduce::Max(tempStorage, tempStorageSize, errorMatrix, deviceError, sizeOfAllocatedMemory, stream);
+            
+            ncclAllReduce((void*)deviceError, (void*)deviceError, 1, ncclDouble, ncclMax, comm, stream);
+
+            cudaMemcpyAsync(error, deviceError, sizeof(double), cudaMemcpyDeviceToHost, stream);
+        }
+
+		cudaStreamSynchronize(stream);
+
+		
+		// Обмен "граничными" условиями каждой области
+		// Обмен верхней границей
+        ncclGroupStart();
+        if (rank != 0)
+		{
+            ncclSend(deviceMatrixBPtr + size + 1, size - 2, ncclDouble, rank - 1, comm, stream); 
+            ncclRecv(deviceMatrixBPtr + 1, size - 2, ncclDouble, rank - 1, comm, stream);
+
+		}
+        // Обмен нижней границей
+		if (rank != sizeOfTheGroup - 1)
+		{
+            ncclSend(deviceMatrixBPtr + (sizeOfAreaForOneProcess - 2) * size + 1, 
+				size - 2, ncclDouble, rank + 1, comm, stream);
+            ncclRecv(deviceMatrixBPtr + (sizeOfAreaForOneProcess - 1) * size + 1, 
+				size - 2, ncclDouble, rank + 1, comm, stream);
+		}
+        ncclGroupEnd();
+
+		// Обмен указателей
+		std::swap(deviceMatrixAPtr, deviceMatrixBPtr);
+	}
+
+	clock_t end = clock();
+	if (rank == 0)
+	{
+		std::cout << "Time: " << 1.0 * (end - begin) / CLOCKS_PER_SEC << std::endl;
+		std::cout << "Iter: " << iter << " Error: " << *error << std::endl;
+	}
+
+	// Высвобождение памяти
+	cudaFree(deviceMatrixAPtr);
+	cudaFree(deviceMatrixBPtr);
+	cudaFree(errorMatrix);
+	cudaFree(tempStorage);
+	cudaFree(matrixA);
+	cudaFree(matrixB);
+
+	MPI_Finalize();
+
+	return 0;
+}
