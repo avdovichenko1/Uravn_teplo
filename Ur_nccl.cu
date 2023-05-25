@@ -16,197 +16,181 @@
 #define CORNER4 20
 
 
-// Главная функция - расчёт поля
-__global__
-void calculateMatrix(double* matrixA, double* matrixB, size_t size, size_t sizePerGpu)
-{
-    unsigned int j = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void updateTemperature(double* arr_pred, double* arr_new, int N, size_t sizePerGpu){
     unsigned int i = blockIdx.y * blockDim.y + threadIdx.y;
+    unsigned int j = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if(!(j == 0 || i == 0 || j == size - 1 || i == sizePerGpu - 1))
-    {
-        matrixB[i * size + j] = 0.25 * (matrixA[i * size + j - 1] + matrixA[(i - 1) * size + j] +
-                                        matrixA[(i + 1) * size + j] + matrixA[i * size + j + 1]);
-    }
+    if(!(j == 0 || i == 0 || j == N - 1 || i == sizePerGpu - 1))
+        arr_new[i * N + j] = 0.25 * (arr_pred[i * N + j - 1] + arr_pred[(i - 1) * N + j] + arr_pred[(i + 1) * N + j] + arr_pred[i * N + j + 1]);
 }
 
 // Функция, подсчитывающая разницу матриц
-__global__
-void getErrorMatrix(double* matrixA, double* matrixB, double* outputMatrix, size_t size)
-{
-    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    outputMatrix[idx] = std::abs(matrixB[idx] - matrixA[idx]);
+__global__ void update_matrix(double* arr_pred, double* arr_new, double* out, int N){
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    out[i] = std::abs(arr_new[i] - arr_pred[i]);
 }
 
-int main(int argc, char** argv)
-{
-    int rank, sizeOfTheGroup;
-    MPI_Init(&argc, &argv);
+int main(int argc, char** argv) {
+    int processRank; // номер текущего процесса
+    int groupSize; // общее количество процессов
+    MPI_Init(&argc, &argv); // инициализация MPI-окружения
 
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &sizeOfTheGroup);
+    MPI_Comm_rank(MPI_COMM_WORLD, &processRank); // определение номера текущего процесса
+    MPI_Comm_size(MPI_COMM_WORLD, &groupSize); // определение общего количества процессов
 
-    cudaSetDevice(rank);
+    cudaSetDevice(processRank); // каждый процесс назначает себе соответствующее CUDA-устройство
 
-    // Получаем значения из командной строки
-    const double minError = std::pow(10, -std::stoi(argv[1]));
-    const int size = std::stoi(argv[2]);
-    const int maxIter = std::stoi(argv[3]);
-    const size_t totalSize = size * size;
+    const double tolerance = std::pow(10, -std::stoi(argv[1])); // заданная точность
+    const int gridSize = std::stoi(argv[2]); // размер сетки
+    const int maxIterations = std::stoi(argv[3]); // максимальное количество итераций
 
-    if (rank == 0)
-    {
-        std::cout << "Parameters: " << std::endl <<
-                  "Min error: " << minError << std::endl <<
-                  "Maximal number of iteration: " << maxIter << std::endl <<
-                  "Grid size: " << size << std::endl;
+    const size_t totalSize = gridSize * gridSize; // общий размер матрицы
+
+    if (processRank == 0) {
+        std::cout << "Параметры: " << std::endl <<
+                  "Точность: " << tolerance << std::endl <<
+                  "Максимальное число итераций: " << maxIterations << std::endl <<
+                  "Размер сетки: " << gridSize << std::endl;
     }
 
-    if (rank != 0)
-        cudaDeviceEnablePeerAccess(rank - 1, 0);
-    if (rank != sizeOfTheGroup - 1)
-        cudaDeviceEnablePeerAccess(rank + 1, 0);
+    if (processRank != 0) {
+        cudaDeviceEnablePeerAccess(processRank - 1, 0); // позволяют текущему процессу установить соединение и получить доступ к памяти на этом соседнем устройствах CUDA
+    }
+
+    if (processRank != groupSize - 1) {
+        cudaDeviceEnablePeerAccess(processRank + 1, 0);
+    }
 
     ncclUniqueId id;
     ncclComm_t comm;
-    if (rank == 0)
-    {
+    if (processRank == 0) {
         ncclGetUniqueId(&id);
     }
     MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD);
-    ncclCommInitRank(&comm, sizeOfTheGroup, id, rank);
+    ncclCommInitRank(&comm, groupSize, id, processRank);
 
-    // Размечаем границы между устройствами
-    size_t sizeOfAreaForOneProcess = size / sizeOfTheGroup;
-    size_t startYIdx = sizeOfAreaForOneProcess * rank;
+// Разделение границ между устройствами
+    size_t areaSizePerProcess = gridSize / groupSize;
+    size_t startYIndex = areaSizePerProcess * processRank;
 
-    // Выделение памяти на хосте
-    double* matrixA, *matrixB;
+// Выделение памяти на хосте
+    double *matrixA, *matrixB;
     cudaMallocHost(&matrixA, sizeof(double) * totalSize);
     cudaMallocHost(&matrixB, sizeof(double) * totalSize);
 
-    std::memset(matrixA, 0, size * size * sizeof(double));
+    std::memset(matrixA, 0, gridSize * gridSize * sizeof(double));
 
-    // Заполнение граничных условий
+// Заполнение граничных условий
     matrixA[0] = CORNER1;
-    matrixA[size - 1] = CORNER2;
-    matrixA[size * size - 1] = CORNER3;
-    matrixA[size * (size - 1)] = CORNER4;
+    matrixA[gridSize - 1] = CORNER2;
+    matrixA[gridSize * gridSize - 1] = CORNER3;
+    matrixA[gridSize * (gridSize - 1)] = CORNER4;
 
-    const double step = 1.0 * (CORNER2 - CORNER1) / (size - 1);
-    for (int i = 1; i < size - 1; i++)
-    {
+    const double step = 1.0 * (CORNER2 - CORNER1) / (gridSize - 1);
+    for (int i = 1; i < gridSize - 1; i++) {
         matrixA[i] = CORNER1 + i * step;
-        matrixA[i * size] = CORNER1 + i * step;
-        matrixA[size - 1 + i * size] = CORNER2 + i * step;
-        matrixA[size * (size - 1) + i] = CORNER4 + i * step;
+        matrixA[i * gridSize] = CORNER1 + i * step;
+        matrixA[gridSize - 1 + i * gridSize] = CORNER2 + i * step;
+        matrixA[gridSize * (gridSize - 1) + i] = CORNER4 + i * step;
     }
 
     std::memcpy(matrixB, matrixA, totalSize * sizeof(double));
 
-    double* deviceMatrixAPtr, *deviceMatrixBPtr, *deviceError, *errorMatrix, *tempStorage = NULL;
+    double *deviceMatrixA, *deviceMatrixB, *deviceError, *errorMatrix, *tempStorage = NULL;
 
-    // Расчитываем, сколько памяти требуется процессу
-    if (rank != 0 && rank != sizeOfTheGroup - 1)
-    {
-        sizeOfAreaForOneProcess += 2;
-    }
-    else
-    {
-        sizeOfAreaForOneProcess += 1;
+// Вычисление необходимого объема памяти для каждого процесса
+    if (processRank != 0 && processRank != groupSize - 1) {
+        areaSizePerProcess += 2;
+    } else {
+        areaSizePerProcess += 1;
     }
 
-    size_t sizeOfAllocatedMemory = size * sizeOfAreaForOneProcess;
+    size_t allocatedMemorySize = gridSize * areaSizePerProcess;
 
-    // Выделяем память на девайсе
-    cudaMalloc((void**)&deviceMatrixAPtr, sizeOfAllocatedMemory * sizeof(double));
-    cudaMalloc((void**)&deviceMatrixBPtr, sizeOfAllocatedMemory * sizeof(double));
-    cudaMalloc((void**)&errorMatrix, sizeOfAllocatedMemory * sizeof(double));
-    cudaMalloc((void**)&deviceError, sizeof(double));
+// Выделение памяти на устройстве
+    cudaMalloc((void **) &deviceMatrixA, allocatedMemorySize * sizeof(double));
+    cudaMalloc((void **) &deviceMatrixB, allocatedMemorySize * sizeof(double));
+    cudaMalloc((void **) &errorMatrix, allocatedMemorySize * sizeof(double));
+    cudaMalloc((void **) &deviceError, sizeof(double));
 
-    // Копируем часть заполненной матрицы в выделенную память, начиная с 1 строки
-    size_t offset = (rank != 0) ? size : 0;
-    cudaMemcpy(deviceMatrixAPtr, matrixA + (startYIdx * size) - offset, sizeof(double) * sizeOfAllocatedMemory, cudaMemcpyHostToDevice);
-    cudaMemcpy(deviceMatrixBPtr, matrixB + (startYIdx * size) - offset, sizeof(double) * sizeOfAllocatedMemory, cudaMemcpyHostToDevice);
+// Копирование заполненной матрицы в выделенную память, начиная со 2 строки
+    size_t offset = (processRank != 0) ? gridSize : 0;
+    cudaMemcpy(deviceMatrixA, matrixA + (startYIndex * gridSize) - offset, sizeof(double) * allocatedMemorySize,
+               cudaMemcpyHostToDevice);
+    cudaMemcpy(deviceMatrixB, matrixB + (startYIndex * gridSize) - offset, sizeof(double) * allocatedMemorySize,
+               cudaMemcpyHostToDevice);
 
-    // Здесь мы получаем размер временного буфера для редукции и выделяем память для этого буфера
+// Определение размера временного буфера для редукции и выделение памяти для этого буфера
     size_t tempStorageSize = 0;
-    cub::DeviceReduce::Max(tempStorage, tempStorageSize, errorMatrix, deviceError, size * sizeOfAreaForOneProcess);
-    cudaMalloc((void**)&tempStorage, tempStorageSize);
+    cub::DeviceReduce::Max(tempStorage, tempStorageSize, errorMatrix, deviceError, gridSize * areaSizePerProcess);
+    cudaMalloc((void **) &tempStorage, tempStorageSize);
 
-    int iter = 0;
-    double* error;
+    int iterations = 0;
+    double *error;
     cudaMallocHost(&error, sizeof(double));
     *error = 1.0;
 
-    unsigned int threads_x = (size < 1024) ? size : 1024;
-    unsigned int blocks_y = sizeOfAreaForOneProcess;
-    unsigned int blocks_x = size / threads_x;
+    unsigned int threadsX = (gridSize < 1024) ? gridSize : 1024;
+    unsigned int blocksY = areaSizePerProcess;
+    unsigned int blocksX = gridSize / threadsX;
 
-    dim3 blockDim(threads_x, 1);
-    dim3 gridDim(blocks_x, blocks_y);
+    dim3 blockDim(threadsX, 1);
+    dim3 gridDim(blocksX, blocksY);
 
     cudaStream_t stream, memoryStream;
     cudaStreamCreate(&stream);
     cudaStreamCreate(&memoryStream);
 
-    // Главный алгоритм
+// Основной алгоритм
     clock_t begin = clock();
-    while(iter < maxIter && (*error) > minError)
-    {
-        iter++;
+    while (iterations < maxIterations && (*error) > tolerance) {
+        iterations++;
 
         // Расчет матрицы
-        calculateMatrix<<<gridDim, blockDim, 0, stream>>>(deviceMatrixAPtr, deviceMatrixBPtr, size, sizeOfAreaForOneProcess);
+        updateTemperature<<<gridDim, blockDim, 0, stream>>>(deviceMatrixA, deviceMatrixB, gridSize, areaSizePerProcess);
 
-        // Расчитываем ошибку каждую сотую итерацию
-        if (iter % 100 == 0)
-        {
-            getErrorMatrix<<<blocks_x * blocks_y, threads_x, 0, stream>>>(deviceMatrixAPtr, deviceMatrixBPtr, errorMatrix, size);
-            cub::DeviceReduce::Max(tempStorage, tempStorageSize, errorMatrix, deviceError, sizeOfAllocatedMemory, stream);
+        // Вычисление ошибки каждые 100 итераций
+        if (iterations % 100 == 0) {
+            updateMatrix<<<blocksX * blocksY, threadsX, 0, stream>>>(deviceMatrixA, deviceMatrixB, errorMatrix,
+                                                                     gridSize);
+            cub::DeviceReduce::Max(tempStorage, tempStorageSize, errorMatrix, deviceError, allocatedMemorySize, stream);
 
-            ncclAllReduce((void*)deviceError, (void*)deviceError, 1, ncclDouble, ncclMax, comm, stream);
+            ncclAllReduce((void *) deviceError, (void *) deviceError, 1, ncclDouble, ncclMax, comm, stream);
 
             cudaMemcpyAsync(error, deviceError, sizeof(double), cudaMemcpyDeviceToHost, stream);
         }
 
         cudaStreamSynchronize(stream);
 
-
         // Обмен "граничными" условиями каждой области
         // Обмен верхней границей
         ncclGroupStart();
-        if (rank != 0)
-        {
-            ncclSend(deviceMatrixBPtr + size + 1, size - 2, ncclDouble, rank - 1, comm, stream);
-            ncclRecv(deviceMatrixBPtr + 1, size - 2, ncclDouble, rank - 1, comm, stream);
-
+        if (processRank != 0) {
+            ncclSend(deviceMatrixB + gridSize + 1, gridSize - 2, ncclDouble, processRank - 1, comm, stream);
+            ncclRecv(deviceMatrixB + 1, gridSize - 2, ncclDouble, processRank - 1, comm, stream);
         }
         // Обмен нижней границей
-        if (rank != sizeOfTheGroup - 1)
-        {
-            ncclSend(deviceMatrixBPtr + (sizeOfAreaForOneProcess - 2) * size + 1,
-                     size - 2, ncclDouble, rank + 1, comm, stream);
-            ncclRecv(deviceMatrixBPtr + (sizeOfAreaForOneProcess - 1) * size + 1,
-                     size - 2, ncclDouble, rank + 1, comm, stream);
+        if (processRank != groupSize - 1) {
+            ncclSend(deviceMatrixB + (areaSizePerProcess - 2) * gridSize + 1,
+                     gridSize - 2, ncclDouble, processRank + 1, comm, stream);
+            ncclRecv(deviceMatrixB + (areaSizePerProcess - 1) * gridSize + 1,
+                     gridSize - 2, ncclDouble, processRank + 1, comm, stream);
         }
         ncclGroupEnd();
 
-        // Обмен указателей
-        std::swap(deviceMatrixAPtr, deviceMatrixBPtr);
+        // Обмен указателями
+        std::swap(deviceMatrixA, deviceMatrixB);
     }
 
     clock_t end = clock();
-    if (rank == 0)
-    {
+    if (processRank == 0) {
         std::cout << "Time: " << 1.0 * (end - begin) / CLOCKS_PER_SEC << std::endl;
-        std::cout << "Iter: " << iter << " Error: " << *error << std::endl;
+        std::cout << "Iterations: " << iterations << " Error: " << *error << std::endl;
     }
 
-    // Высвобождение памяти
-    cudaFree(deviceMatrixAPtr);
-    cudaFree(deviceMatrixBPtr);
+// Освобождение памяти
+    cudaFree(deviceMatrixA);
+    cudaFree(deviceMatrixB);
     cudaFree(errorMatrix);
     cudaFree(tempStorage);
     cudaFree(matrixA);
