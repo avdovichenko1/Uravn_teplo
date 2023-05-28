@@ -21,16 +21,16 @@ __global__ void updateTemperature(double* arr_pred, double* arr_new, int N, size
     }
 
 // Функция, подсчитывающая разницу матриц
-    __global__ void update_matrix(double* arr_pred, double* arr_new, double* out, int N){
-        size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-        out[i] = fabs(arr_new[i] - arr_pred[i]);
-    }
+__global__ void update_matrix(double* arr_pred, double* arr_new, double* out, int N){
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    out[i] = fabs(arr_new[i] - arr_pred[i]);
+}
 
 int main(int argc, char** argv) {
     clock_t a = clock();
     int processRank; // номер текущего процесса
     int groupSize; // общее количество процессов
-    MPI_Init(&argc, &argv); // инициализация MPI-окружения
+    MPI_Init(&argc, &argv); // инициализация MPI-окружения, создает коммуникатор MPI_COMM_WORLD, который представляет все процессы, участвующие в программе
     
     MPI_Comm_rank(MPI_COMM_WORLD, &processRank); // определение номера текущего процесса
     MPI_Comm_size(MPI_COMM_WORLD, &groupSize); // определение общего количества процессов
@@ -63,14 +63,7 @@ int main(int argc, char** argv) {
     if (processRank != groupSize - 1)
         cudaDeviceEnablePeerAccess(processRank + 1, 0); //доступ между устройствами на разных процессах, чтобы они могли обмениваться данными при необходимости
 
-    ncclUniqueId id;
-    ncclComm_t comm;
-
-    if (processRank == 0) {
-        ncclGetUniqueId(&id); //уникальный идентификатор id генерируется только для процесса с рангом 0
-    }
     MPI_Bcast(&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD); // уникальный идентификатор id передается остальным процессам
-    ncclCommInitRank(&comm, groupSize, id, processRank); //создается коммуникатор comm для группы процессов
 
     size_t areaSizePerProcess = gridSize / groupSize; // получение размера области данных на каждом процессе.
 
@@ -125,9 +118,6 @@ int main(int argc, char** argv) {
     cudaStream_t stream; //используется для запуска ядер CUDA и асинхронной копии данных между хостом и устройством
     cudaStreamCreate(&stream);
 
-    cudaStream_t memoryStream; //используется для выполнения операции синхронизации
-    cudaStreamCreate(&memoryStream);
-
     while (num_iterations < maxIterations && (*error) > tolerance) {
         num_iterations++;
 
@@ -137,26 +127,22 @@ int main(int argc, char** argv) {
             update_matrix<<<blocksX * blocksY, threadsX, 0, stream>>>(device_arr_pred, device_arr_new, errorMatrix, gridSize);
             cub::DeviceReduce::Max(tempStorage, tempStorageSize, errorMatrix, deviceError, allocatedMemorySize, stream);
 
-            ncclAllReduce((void*)deviceError, (void*)deviceError, 1, ncclDouble, ncclMax, comm, stream); //выполняется операция максимума среди всех процессов
-// 1 - у нас 1 элемент deviceerror
+            MPI_Allreduce((void*)&deviceError,(void*)&deviceError, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD) //Результат операции
+                //сохраняется в переменной deviceError, доступной для всех процессов
 
             cudaMemcpyAsync(error, deviceError, sizeof(double), cudaMemcpyDeviceToHost, stream);
         }
 
         cudaStreamSynchronize(stream);
 
-        ncclGroupStart(); // начинает группу операций NCCL
-        if (processRank != 0) {
-            //процесс отправляет данные смещением gridSize + 1 из device_arr_new размером gridSize - 2 элементов типа ncclDouble процессу с рангом processRank - 1
-            ncclSend(device_arr_new + gridSize + 1, gridSize - 2, ncclDouble, processRank - 1, comm, stream);
-            //принимает данные размером gridSize - 2 элементов типа ncclDouble от процесса с рангом processRank - 1
-            ncclRecv(device_arr_new + 1, gridSize - 2, ncclDouble, processRank - 1, comm, stream);
+        if (processRank != 0) { // процессы обмениваются частями массива device_arr_new для соседних процессов
+             MPI_Sendrecv(device_arr_new + gridSize + 1, gridSize - 2, MPI_DOUBLE, processRank - 1, 0, device_arr_new  + 1, gridSize - 2, 
+                         MPI_DOUBLE,  processRank - 1,  0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
         if (processRank != groupSize - 1) {
-            ncclSend(device_arr_new + (areaSizePerProcess - 2) * gridSize + 1, gridSize - 2, ncclDouble, processRank + 1, comm, stream);
-            ncclRecv(device_arr_new + (areaSizePerProcess - 1) * gridSize + 1, gridSize - 2, ncclDouble, processRank + 1, comm, stream);
+            MPI_Sendrecv(device_arr_new + (areaSizePerProcess - 2) * gridSize + 1, gridSize - 2, MPI_DOUBLE, processRank+ 1, 0, 
+			     device_arr_new + (areaSizePerProcess - 1) * gridSize + 1, gridSize - 2, MPI_DOUBLE, processRank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
-        ncclGroupEnd();
 
         double* temp = device_arr_pred;
         device_arr_pred = device_arr_new;
@@ -178,7 +164,7 @@ int main(int argc, char** argv) {
     cudaFree(arr_pred);
     cudaFree(arr_new);
 
-    MPI_Finalize();
+    MPI_Finalize(); //завершает MPI-окружение и освобождает ресурсы, связанные с MPI
 
     return 0;
 }
