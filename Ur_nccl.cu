@@ -31,15 +31,31 @@ int main(int argc, char** argv) {
     int processRank; // номер текущего процесса
     int groupSize; // общее количество процессов
     MPI_Init(&argc, &argv); // инициализация MPI-окружения
-
+    
     MPI_Comm_rank(MPI_COMM_WORLD, &processRank); // определение номера текущего процесса
     MPI_Comm_size(MPI_COMM_WORLD, &groupSize); // определение общего количества процессов
 
     cudaSetDevice(processRank); // каждый процесс назначает себе соответствующее CUDA-устройство
-
-    const double tolerance = std::pow(10, -std::stoi(argv[1]));
-    const int gridSize = std::stoi(argv[2]);
-    const int maxIterations = std::stoi(argv[3]);
+    
+    if (argc < 4){
+        printf("Неправильное количество аргументов");
+        exit(1);
+    }
+    tolerance = strtod(argv[1], NULL);
+    if (tolerance <= 0){
+        printf("Ограничение точности должно превышать 0");
+        exit(1);
+    }
+    gridSize = atoi(argv[2]);
+    if (gridSize <= 0){
+        printf("Размер матриццы должен быть больше 0");
+        exit(1);
+    }
+    maxIterations = atoi(argv[3]);
+    if (maxIterations <= 0){
+        printf("Максимальное количество итераци должно быть больше 0");
+        exit(1);
+    }
 
     if (processRank != 0)
         cudaDeviceEnablePeerAccess(processRank - 1, 0); //вызывается функция cudaDeviceEnablePeerAccess для разрешения доступа между текущим процессом и предыдущим
