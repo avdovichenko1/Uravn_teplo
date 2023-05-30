@@ -77,8 +77,9 @@ int main(int argc, char* argv[]) {
     if (rank != size - 1 && rank != 0) 
 	    size_y += 1;
 	
-    dim3 t(32,32); //определяю количество нитей в каждом блоке
-    dim3 b(find_threads(Matrix), find_threads(Matrix)); // количество блоков
+    dim3 thread(32,32);
+    dim3 block(size/thread.x+1, size/thread.y+1);
+  
 	
     // выделяем память на gpu через cuda для 3 сеток
     double *A, *CudaArr, *CudaNewArr, *CudaArrErr;
@@ -116,14 +117,15 @@ int main(int argc, char* argv[]) {
     while (err > accuracy && iter < iterations) 
     {
 	iter++;
-	calculate <<<b, t, 0, stream>>> (CudaArr, CudaNewArr, Matrix, size_y);
+	calculate <<<block, thread, 0, stream>>> (CudaArr, CudaNewArr, Matrix, size_y);
 	// Расчитываем ошибку каждую сотую итерацию
 	if (iter % 100 == 0) {
-		subtraction<<<b, t, 0, stream>>>(CudaArr, CudaNewArr, CudaArrErr, Matrix);
+		subtraction<<<block, thread, 0, stream>>>(CudaArr, CudaNewArr, CudaArrErr, Matrix);
 		cub::DeviceReduce::Max(tempStorage, tempStorageBytes, CudaArrErr, max_err, Matrix * size_y);
 		cudaMemcpy(&err, max_err, sizeof(double), cudaMemcpyDeviceToHost);
 
-		MPI_Allreduce((void*)&max_err,(void*)&max_err, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+		MPI_Allreduce((void*)&max_err,(void*)&max_err, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD); 
+		// синхронизация максимальной ошибки между всеми процессами
 		
 		cudaMemcpyAsync(&err, max_err, sizeof(double), cudaMemcpyDeviceToHost, stream); // запись ошибки в переменную на host
             	// Находим максимальную ошибку среди всех и передаём её всем процессам
