@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &processRank); // определение номера текущего процесса
     MPI_Comm_size(MPI_COMM_WORLD, &groupSize); // определение общего количества процессов
 
-    cudaSetDevice(processRank); // каждый процесс назначает себе соответствующее CUDA-устройство
+    cudaSetDevice(processRank); // установкf текущего устройства CUDA, которое будет использоваться для выполнения операций на GPU
     
     if (argc < 4){
         printf("Неправильное количество аргументов");
