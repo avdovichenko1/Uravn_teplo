@@ -130,6 +130,8 @@ int main(int argc, char* argv[]) {
 		cudaMemcpyAsync(&err, max_err, sizeof(double), cudaMemcpyDeviceToHost, stream); // запись ошибки в переменную на host
             	// Находим максимальную ошибку среди всех и передаём её всем процессам
 	}
+	    
+	cudaStreamSynchronize(stream);
 
 	if (rank != 0){ // Обмен верхней границей
             	MPI_Sendrecv(CudaNewArr + Matrix + 1, Matrix - 2, MPI_DOUBLE, rank - 1, 0, CudaNewArr + 1, 
