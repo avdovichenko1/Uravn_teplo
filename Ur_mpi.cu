@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
     cudaMallocHost(&error, sizeof(double));
     *error = 1.0;
 
-    unsigned int threadsX = (gridSize < 1024) ? gridSize : 1024;
+    unsigned int threadsX = 1024;
     unsigned int blocksY = areaSizePerProcess;
     unsigned int blocksX = gridSize / threadsX;
 
